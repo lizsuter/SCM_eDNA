@@ -1,0 +1,296 @@
+---
+title: "Analysis of Sara's Atlantic fish dataset"
+author: "Liz Suter"
+date: "Jan 4 2021"
+editor_options:
+  chunk_output_type: console
+---
+<br>
+
+
+### Install and load packages
+
+No need to do any installations in VICE app. Packages should come pre-installed. But need to run libraries:
+
+```{r}
+library(dada2)
+library(DECIPHER)
+library(phyloseq)
+```
+
+
+### Get sample names- run in Terminal
+```bash
+cd Raw_data
+ls *R1_001.fastq.gz | cut -f 1-2 -d "_" > ../samples
+```
+### Take a look at the untrimmed reads
+```{r}
+## import sample names as R variable
+samples <- scan("samples", what="character")
+
+# make variable holding the file names of all the forward read fastq files. These are in a subdirectory, so I am also adding the name of the sub directory to the file name
+forward_reads <- paste0("Raw_data/", samples, "_L001_R1_001.fastq.gz")
+# and one with the reverse
+reverse_reads <- paste0("Raw_data/", samples, "_L001_R2_001.fastq.gz")
+
+# And plot using a tool from dada2 (checking only 5 samples for plotting purposes)
+plotQualityProfile(forward_reads[1:5])
+plotQualityProfile(reverse_reads[1:5])
+```
+
+From the above you can see the reads are 150bp and the quality is good, with the R reads being poorer than the F reads. 
+
+### Removing primers using cutadapt- run in Terminal
+
+Primers are universal MiFISh primers from [Miya et al. 2015](https://royalsocietypublishing.org/doi/10.1098/rsos.150088). Amplify a subregion of 12S rRNA that is 163-185 bp long.
+
+MiFISH-U-F, 5'-3': GTCGGTAAAACTCGTGCCAGC [rev comp: GCTGGCACGAGTTTTACCGAC]
+MiFISH-U-R, 5'-3': CATAGTGGGGTATCTAATCCCAGTTTG [rev comp: CAAACTGGGATTAGATACCCCACTATG]
+
+Cut F primer from F reads with -g option
+Cut rev comp of R primer from F reads with -a option
+Cut R primer from R reads with -G option
+Cut rev comp of F primer from R reads with -A option
+
+Run cutadapt to remove primers. DUse min length of 100bp
+
+```bash
+cd ..
+mkdir trimmed_fastq
+cd Raw_data
+
+# Run in loop
+
+for sample in $(cat ../samples)
+do
+    echo "On sample: $sample"
+cutadapt -g GTCGGTAAAACTCGTGCCAGC \
+-a CAAACTGGGATTAGATACCCCACTATG \
+-G CATAGTGGGGTATCTAATCCCAGTTTG \
+-A GCTGGCACGAGTTTTACCGAC \
+-m 100 \
+--discard-untrimmed \
+-o ../trimmed_fastq/${sample}_L001_R1_001_trimmed.fastq.gz -p ../trimmed_fastq/${sample}_L001_R2_001_trimmed.fastq.gz \
+${sample}_L001_R1_001.fastq.gz ${sample}_L001_R2_001.fastq.gz \
+>> ../trimmed_fastq/cutadapt_primer_trimming_stats.txt 2>&1
+done
+
+```
+
+
+Check output, how many were filtered out after cutadapt
+```bash
+paste ../samples <(grep "passing" ../trimmed_fastq/cutadapt_primer_trimming_stats.txt | cut -f3 -d "(" | tr -d ")") <(grep "filtered" ../trimmed_fastq/cutadapt_primer_trimming_stats.txt | cut -f3 -d "(" | tr -d ")")
+```
+
+Retained ~68-99% of reads. Looking at stats output file, you can see the F and R primers were trimmed in almost all cases and the rev comp of each primer was trimmed in many cases too.
+
+Time to start processing with DADA2!
+
+# DADA2- back to R console
+
+
+Now let's take a look at the trimmed reads.
+
+```{r}
+forward_reads_trimmed <- paste0("trimmed_fastq/", samples, "_L001_R1_001_trimmed.fastq.gz")
+reverse_reads_trimmed <- paste0("trimmed_fastq/", samples, "_L001_R2_001_trimmed.fastq.gz")
+
+# And plot 
+plotQualityProfile(forward_reads_trimmed[1:5])
+plotQualityProfile(reverse_reads_trimmed[1:5])
+```
+
+Comparing the above to the pre-trimmed reads, they look very similar because only very few had primers. 
+
+### Quality Trimming
+Make a directory for filtered reads
+```bash
+cd ..
+mkdir filtered_fastq
+```
+
+Make variables containing the file names for the new filtered forward and reverse reads that we will make
+```{r}
+filtered_forward_reads <- paste0("filtered_fastq/",samples, "_L001_R1_001_filtered.fastq.gz")
+filtered_reverse_reads <- paste0("filtered_fastq/",samples, "_L001_R2_001_filtered.fastq.gz")
+```
+
+
+Based on how the quality plots look, determine how much to cut from each side. Trim the F reads at 130 Trim the R reads to 120 Also I want to run this step to trim out the low-quality individual reads (set maxEE to 1 for both F and R reads). The rm.phix = TRUE option removes any leftover  PhiX genomic DNA (that gets added as a standard during sequencing). Pick a min length ~shorter than the min trimmed length (in this case 100 for R reads). I also set truncQ to truncate any read that has a quality score less than 2. Multithreading for this function does not work well (even according to documentation) so needed to skip that. Takes awhile  to run.
+```{r}
+filtered_out <- filterAndTrim(forward_reads_trimmed, filtered_forward_reads,
+                reverse_reads_trimmed, filtered_reverse_reads, maxEE=c(2,2),
+                rm.phix=TRUE, minLen=100, truncLen=c(130,120), truncQ = 2, maxN=0)
+```
+
+Check out the quality profiles again.
+```{r}
+filtered_out
+
+plotQualityProfile(filtered_forward_reads[1:5])
+plotQualityProfile(filtered_reverse_reads[1:5])
+```
+
+
+These look better. Many were retained before and after quality trimming:
+
+
+Save workspace up to this point.
+```{r}
+save.image(file = "upto_filterfastq.RData")
+```
+
+Run if you come back and need to reload dataset
+```{r}
+load("upto_filterfastq.RData")
+```
+
+
+### Error profiling
+Next, DADA2 tries to learn the error signature of our dataset. This step takes a while
+```{r}
+err_forward_reads <- learnErrors(filtered_forward_reads, multithread=TRUE)
+err_reverse_reads <- learnErrors(filtered_reverse_reads, multithread=TRUE)
+```
+
+
+
+Plot the error profiles
+```{r}
+plotErrors(err_forward_reads, nominalQ=TRUE)
+plotErrors(err_reverse_reads, nominalQ=TRUE)
+```
+
+The creators of DADA2 describe this [here](https://benjjneb.github.io/dada2/tutorial.html#learn-the-error-rates). The profiles are the error rates for each possible transition in the read (A->C, A->G, etc). Generally in the above plots, you want to see that the black dots (observed error rates for each quality score) match well with the black lines (the estimated error rate). The red line is what is expected based on the quality score.
+
+Backup again since this step above takes awhile
+Save workspace up to this point.
+```{r}
+save.image(file = "upto_errorprofile.RData")
+```
+
+
+### Inferring ASVs
+Use the dada command to infer ASVs. We are going to use the pooling option "psuedo" which is described [here](https://benjjneb.github.io/dada2/pseudo.html#Pseudo-pooling). This step also takes awhile
+```{r}
+dada_forward <- dada(filtered_forward_reads, err=err_forward_reads, pool="pseudo", multithread=TRUE) 
+dada_reverse <- dada(filtered_reverse_reads, err=err_reverse_reads, pool="pseudo", multithread=TRUE)
+```
+
+Backup again since this step above takes awhile
+Save workspace up to this point.
+```{r}
+save.image(file = "upto_inferasv.RData")
+```
+
+
+
+### Merge inferred reads 
+Dada2 will merge reads wherever the overlap is identical between the F and R reads. I trimmed the F reads to 130 and R reads to 120 (150). The full amplicon size (based on primers) should be 163-185. Being conservative, use a length of 185. This means the F read is from position 1 to 130 and the R read is from position 185 to 65, leaving a region of overlap between position 65 and 130.
+Since this is an estimate, leave a little wiggle room and set the minimum overlap to 30bp. Also set trimOverhang to true, which makes sure that a read doesn't go past its opposite primer (which probably wouldn't happpen any way due to trimming).
+```{r}
+merged_amplicons <- mergePairs(dada_forward, filtered_forward_reads, dada_reverse, filtered_reverse_reads, trimOverhang=TRUE, minOverlap=30, verbose = TRUE)
+```
+
+
+```{r}
+names(merged_amplicons)
+# Initially these names have the full name with `fastq.gz` in the name. Change to just sample name
+names(merged_amplicons) <- samples
+
+# Check some other things
+length(merged_amplicons) # one for each of our samples
+class(merged_amplicons$T1PosCon_S11) # each element of the list is a dataframe that can be accessed and manipulated like any ordinary dataframe
+names(merged_amplicons$T1PosCon_S11) # the names() function on a dataframe gives you the column names
+# "sequence"  "abundance" "forward"   "reverse"   "nmatch"    "nmismatch" "nindel"    "prefer"    "accept"
+```
+
+Back up again
+```{r}
+save.image(file = "upto_merge.RData")
+```
+
+
+### Creating a sequence table
+```{r}
+#load("20200710backup/HRE_sewage_microbiome_upto_merge.RData")
+seqtab <- makeSequenceTable(merged_amplicons)
+class(seqtab) # matrix
+dim(seqtab) # 55 samples, 3512 unique ASVs
+```
+
+### Removing chimeras
+```{r}
+seqtab.nochim <- removeBimeraDenovo(seqtab, verbose=TRUE) 
+
+# Identified 3511 bimeras out of 31475 input sequences.
+
+# though we a lot of unique sequences, we don't know if they held a lot in terms of abundance, this is one quick way to look at that
+sum(seqtab.nochim)/sum(seqtab) 
+# 0.9457455
+# good, we barely lost any in terms of abundance. That means the chimeras were very low abundance "ASVs"
+```
+
+Backup again since this step above takes awhile
+Save workspace up to this point.
+```{r}
+save.image(file = "upto_chimera.RData")
+```
+
+
+# Summary of read counts through the pipeline
+```{r}
+# set a little function
+getN <- function(x) sum(getUniques(x))
+
+# making a little table
+summary_tab <- data.frame(row.names=samples, dada2_input=filtered_out[,1],
+                          filtered=filtered_out[,2], dada_f=sapply(dada_forward, getN),
+                          dada_r=sapply(dada_reverse, getN), merged=sapply(merged_amplicons, getN),
+                          nonchim=rowSums(seqtab.nochim),
+                          final_perc_reads_retained=round(rowSums(seqtab.nochim)/filtered_out[,1]*100, 1))
+
+summary_tab
+```
+
+In the end, we retained abot 80-95% of input reads after the filtering steps. (Except 3 samples that didn't merge at all.)
+
+
+Next, follow some code from Stoeckle et al. on exporting the "OTU" table and fasta file.  
+(Note this is not at "OTU" table because these are ASVs)
+
+```{r}
+# Construct  sequence table
+table(nchar(colnames(seqtab.nochim)))
+length(unique(substr(colnames(seqtab.nochim), 1, 100)))
+dim(seqtab.nochim)
+
+# Make "otu_table"
+seqs <- colnames(seqtab.nochim)
+otab <- otu_table(seqtab.nochim, taxa_are_rows=FALSE)
+colnames(otab) <- paste0("Seq_", seq(ncol(otab)))
+#Write fastas to test file
+writeFasta <- function(seqs, output) {
+
+  seqsout <- mapply( function(idx, sequence) paste0(">Seq_",idx,"\n",sequence,"\n"),
+                     seq(length(seqs)),
+                     seqs)
+  write(paste0(seqsout), file = output, sep = "")
+
+}
+
+seqs_for_blast <- DNAStringSet(seqs)
+names(seqs_for_blast) <-  sapply(seq(length(seqs)),function(x) {paste0("Seq_",x)})
+
+# Write the fasta sequences and the OTU table
+writeFasta(seqs, "results/tax_sequences")
+write.table(otab,  file="results/otutable.csv")
+```
+
+
+
+STOPPED HERE JAN 4TH
+
+

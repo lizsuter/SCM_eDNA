@@ -3,3 +3,12 @@
 .RData
 .Ruserdata
 Raw_data/
+trimmed_fastq/
+filtered_fastq/
+upto_filterfastq.RData
+upto_errorprofile.RData
+upto_inferasv.RData
+upto_merge.RData
+upto_chimera.RData
+results/
+pone.0175186.s012.R
