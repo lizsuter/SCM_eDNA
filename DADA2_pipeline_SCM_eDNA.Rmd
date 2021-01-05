@@ -2,8 +2,9 @@
 title: "Analysis of Sara's Atlantic fish dataset"
 author: "Liz Suter"
 date: "Jan 4 2021"
-editor_options:
-  chunk_output_type: console
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
 ---
 <br>
 
@@ -288,9 +289,4 @@ names(seqs_for_blast) <-  sapply(seq(length(seqs)),function(x) {paste0("Seq_",x)
 writeFasta(seqs, "results/tax_sequences")
 write.table(otab,  file="results/otutable.csv")
 ```
-
-
-
-STOPPED HERE JAN 4TH
-
 
