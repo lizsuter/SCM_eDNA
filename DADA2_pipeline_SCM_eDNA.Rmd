@@ -411,10 +411,11 @@ prepareDatabase('databases/accessionTaxa.sql')
 
 
 
-Read blast results from  table into R 
+Read blast results from  table into R and give it headers
 ```{r}
-blastResults<-read.table('results/tax_sequences_blast.txt',header=FALSE,stringsAsFactors=FALSE,fill=TRUE)
-blastResults[1:5,]
+blastResults<-read.table('results/tax_sequences_blast.txt', header=FALSE, stringsAsFactors=FALSE,fill=TRUE)
+colnames(blastResults) <- c("ASV_ID", "ref_seq_ID", "PID", "alnmt_len", "mismatch", "eval", "bscore", "RefSeq_Tax_ID", "Ref_Seq_title")
+blastResults[1:10,]
 ```
 
 
@@ -423,7 +424,7 @@ and grab accesion numbers
 ```{r}
 #grab the 4th |-separated field from the reference name in the second column
 accessions<-sapply(strsplit(blastResults[,2],'\\|'),'[',4)
-accessions
+accessions[1:10]
 ```
 
 
@@ -431,19 +432,34 @@ accessions
 Get taxonomy ID for each accesion number
 ```{r}
 taxaId<-accessionToTaxa(accessions,"databases/accessionTaxa.sql")
-print(taxaId)
+taxaId[1:10]
 ```
 
 
 
 And get taxonomy for those tax IDs
 ```{r}
-getTaxonomy(taxaId,'databases/accessionTaxa.sql')[1:5,]
+taxonomy_table <- getTaxonomy(taxaId,'databases/accessionTaxa.sql')
+
+taxonomy_table <- cbind(taxonomy_table, rownames(taxonomy_table))
+colnames(taxonomy_table)[dim(taxonomy_table)[2]] <- "RefSeq_Tax_ID"
+rownames(taxonomy_table) <- NULL
+
+taxonomy_table <- as.data.frame(taxonomy_table)
+taxonomy_table[1:10,]
 ```
 
 
 
-Append taxonomy to results file and export as one file....
+Append taxonomy table to blast results table and export as one file
+```{r}
+tax_sequences_blast_taxonomy <- cbind(blastResults, taxonomy_table)
+write.table(tax_sequences_blast_taxonomy, file = "results/tax_sequences_blast_taxonomy.csv", sep = ",", col.names=NA)
+
+```
+
+
+
 
 
 
