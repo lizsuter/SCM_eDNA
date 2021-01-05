@@ -17,6 +17,7 @@ No need to do any installations in VICE app. Packages should come pre-installed.
 library(dada2)
 library(DECIPHER)
 library(phyloseq)
+library(taxonomizr)
 ```
 
 
@@ -85,7 +86,66 @@ Check output, how many were filtered out after cutadapt
 paste ../samples <(grep "passing" ../trimmed_fastq/cutadapt_primer_trimming_stats.txt | cut -f3 -d "(" | tr -d ")") <(grep "filtered" ../trimmed_fastq/cutadapt_primer_trimming_stats.txt | cut -f3 -d "(" | tr -d ")")
 ```
 
-Retained ~68-99% of reads. Looking at stats output file, you can see the F and R primers were trimmed in almost all cases and the rev comp of each primer was trimmed in many cases too.
+Output: 
+```
+T1PosCon_S11	89.4%	80.4%
+T1S10_S9	81.4%	76.6%
+T1S11_S10	97.5%	83.1%
+T1S1_S1	97.9%	83.2%
+T1S2_S2	68.4%	68.9%
+T1S3_S3	85.3%	78.9%
+T1S5_S4	91.6%	81.1%
+T1S6_S5	85.5%	78.4%
+T1S7_S6	83.3%	78.1%
+T1S8_S7	98.4%	83.1%
+T1S9_S8	94.6%	82.3%
+T2PosCon_S21	99.4%	83.5%
+T2S10_S19	69.5%	71.7%
+T2S11_S20	90.5%	80.7%
+T2S1_S12	68.5%	70.6%
+T2S2_S13	97.8%	83.1%
+T2S3_S14	98.1%	83.2%
+T2S4_S15	87.3%	79.8%
+T2S5_S16	78.9%	75.9%
+T2S6_S17	92.2%	81.3%
+T2S9_S18	98.9%	83.5%
+T3PosCon_S33	61.0%	67.4%
+T3S10_S31	90.7%	80.8%
+T3S11_S32	64.6%	69.7%
+T3S1_S22	70.2%	72.8%
+T3S2_S23	97.5%	82.3%
+T3S3_S24	33.2%	45.0%
+T3S4_S25	82.3%	77.7%
+T3S5_S26	74.4%	74.4%
+T3S6_S27	94.1%	82.0%
+T3S7_S28	88.1%	79.7%
+T3S8_S29	97.0%	82.7%
+T3S9_S30	95.8%	82.6%
+T4S10_S43	89.3%	80.2%
+T4S11_S44	90.3%	80.2%
+T4S1_S34	97.4%	83.0%
+T4S2_S35	77.8%	76.2%
+T4S3_S36	96.4%	82.6%
+T4S4_S37	79.2%	74.6%
+T4S5_S38	93.5%	79.5%
+T4S6_S39	88.9%	79.8%
+T4S7_S40	92.9%	81.6%
+T4S8_S41	91.1%	81.0%
+T4S9_S42	77.7%	76.2%
+T5S10_S54	92.7%	81.3%
+T5S11_S55	84.4%	78.4%
+T5S1_S45	95.3%	82.1%
+T5S2_S46	96.3%	82.2%
+T5S3_S47	97.8%	83.0%
+T5S4_S48	96.4%	82.4%
+T5S5_S49	83.8%	78.2%
+T5S6_S50	89.2%	79.8%
+T5S7_S51	78.3%	75.1%
+T5S8_S52	96.3%	82.3%
+T5S9_S53	95.3%	82.2%
+```
+
+So it retained ~68-99% of reads. Looking at stats output file, you can see the F and R primers were trimmed in almost all cases and the rev comp of each primer was trimmed in many cases too.
 
 Time to start processing with DADA2!
 
@@ -175,6 +235,8 @@ save.image(file = "upto_errorprofile.RData")
 
 ### Inferring ASVs
 Use the dada command to infer ASVs. We are going to use the pooling option "psuedo" which is described [here](https://benjjneb.github.io/dada2/pseudo.html#Pseudo-pooling). This step also takes awhile
+
+Stoeckle et al. use the loess error model for error estimation, which is the default so I didn't set that here. They also set selfConsist = true so that "the error-model was independently built for each sample." They also turn pooling off (the default) and said that they "build an error model using a subset of the total reads from a sequencing run and provide this model to DADA2." However, in their code, the set the error model as `err=inflateErr(tperr1,3)` which uses an error model from a mock community. This is used as an example in the dada2 documentation but I don't think it should be used for real samples. Really they should have generated the model from their own data (as above). So I am keeping my own modifications here and not theirs. 
 ```{r}
 dada_forward <- dada(filtered_forward_reads, err=err_forward_reads, pool="pseudo", multithread=TRUE) 
 dada_reverse <- dada(filtered_reverse_reads, err=err_reverse_reads, pool="pseudo", multithread=TRUE)
@@ -259,7 +321,7 @@ summary_tab
 In the end, we retained abot 80-95% of input reads after the filtering steps. (Except 3 samples that didn't merge at all.)
 
 
-Next, follow some code from Stoeckle et al. on exporting the "OTU" table and fasta file.  
+Next, follow some code from [Stoeckle et al.](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0175186#sec014) for making `writeFasta` function and exporting the "OTU" table and fasta file.  
 (Note this is not at "OTU" table because these are ASVs)
 
 ```{r}
@@ -286,7 +348,106 @@ seqs_for_blast <- DNAStringSet(seqs)
 names(seqs_for_blast) <-  sapply(seq(length(seqs)),function(x) {paste0("Seq_",x)})
 
 # Write the fasta sequences and the OTU table
-writeFasta(seqs, "results/tax_sequences")
+writeFasta(seqs, "results/tax_sequences.fasta")
 write.table(otab,  file="results/otutable.csv")
 ```
+
+
+
+
+## Annotation
+
+I am using blastn function in terminal, which can be installed with the blast package using conda `conda install blast`. I already had it installed but was having trouble bc v2.9 does not work on remote host (according to [this](https://www.biostars.org/p/400841/)). So I downgraded my blast to v2.6 with `conda install -c bioconda/label/cf201901 blast`
+
+
+#### Test on subset of samples. I made a `test_sequences.fasta` which only has first 5 ASVs from `tax_sequences.fasta`.
+```bash
+blastn -query results/test_sequences.fasta \
+-db nt \
+-out results/test_blast_ASVs_perc_99.txt \
+-remote
+```
+That generates full blast results with alignments of of all hits for every ASV and more.
+
+#### Test2- only spit out best hit, collect table with PID, escore, etc
+```bash
+blastn -query results/test_sequences.fasta \
+-db nt \
+-out results/test2_blast.txt \
+-remote \
+-max_target_seqs 1 \
+-outfmt 6 #\
+```
+OK that outfmt option #6 is a table that spits out:
+ 1.	 qseqid	 query (e.g., unknown gene) sequence id
+ 2.	 sseqid	 subject (e.g., reference genome) sequence id
+ 3.	 pident	 percentage of identical matches
+ 4.	 length	 alignment length (sequence overlap)
+ 5.	 mismatch	 number of mismatches
+ 6.	 gapopen	 number of gap openings
+ 7.	 qstart	 start of alignment in query
+ 8.	 qend	 end of alignment in query
+ 9.	 sstart	 start of alignment in subject
+ 10.	 send	 end of alignment in subject
+ 11.	 evalue	 expect value
+ 12.	 bitscore	 bit score
+
+But I also want to add info about blast subject. Try adding options:
+staxids   Subject Taxonomy ID(s), separated by a ';'
+sscinames Subject Scientific Name(s), separated by a ';'
+sblastnames Subject Blast Name(s), separated by a ';'   (in alphabetical order)
+stitle      Subject Title
+
+#### Test3- take out `gapopen qstart qend sstart send` from table and add in `staxids sscinames sblastnames stitle`
+```bash
+blastn -query results/test_sequences.fasta \
+-db nt \
+-out results/test3_blast.txt \
+-remote \
+-max_target_seqs 1 \
+-outfmt "6 qseqid sseqid pident length mismatch evalue bitscore staxids sscinames sblastnames stitle" 
+```
+
+It doesn't work to download the [taxdb](ftp://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz) because its working on remote server and database is local.
+
+Instead, re-run without `sscinames sblastnames` then add taxonomy using R package.
+
+#### Test4 Link Acc Numbers from with Taxonomy from NCBI. 
+I found an R package for this called [Taxonomizr](https://github.com/sherrillmix/taxonomizr).
+
+
+Download all tax assignments in NCBI and make SQLite database (this takes several hours). Store this file is a higer folder in a shared place instead of downloading it each time.
+
+```{r}
+prepareDatabase('databases/accessionTaxa.sql')
+```
+
+Read blast results from results table into R 
+```{r}
+blastResults<-read.table('results/test3_blast.txt',header=FALSE,stringsAsFactors=FALSE,fill=TRUE)
+blastResults
+```
+
+
+and grab accesion numbers
+```{r}
+#grab the 4th |-separated field from the reference name in the second column
+accessions<-sapply(strsplit(blastResults[,2],'\\|'),'[',4)
+accessions
+```
+
+Get taxonomy ID for each accesion number
+```{r}
+taxaId<-accessionToTaxa(accessions,"databases/accessionTaxa.sql")
+print(taxaId)
+```
+
+And get taxonomy for those tax IDs
+```{r}
+getTaxonomy(taxaId,'databases/accessionTaxa.sql')
+```
+
+Next append taxonomy to results file and export
+
+
 
