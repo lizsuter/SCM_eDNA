@@ -6,7 +6,8 @@ output: html_notebook
 editor_options: 
   chunk_output_type: inline
 ---
-[Link](https://htmlpreview.github.io/?https://github.com/lizsuter/SCM_eDNA/blob/main/DADA2_pipeline_SCM_eDNA.nb.html) to notebook
+[Link](https://htmlpreview.github.io/?https://github.com/lizsuter/SCM_eDNA/blob/main/DADA2_pipeline_SCM_eDNA.nb.html) to notebook  
+
 [Link](https://github.com/lizsuter/SCM_eDNA) to github repo.
 <br>
 
