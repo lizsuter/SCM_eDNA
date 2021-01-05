@@ -6,12 +6,11 @@ output: html_notebook
 editor_options: 
   chunk_output_type: inline
 ---
+[Link](https://htmlpreview.github.io/?https://github.com/lizsuter/SCM_eDNA/blob/main/DADA2_pipeline_SCM_eDNA.nb.html) to notebook
 <br>
 
 
 ### Install and load packages
-
-No need to do any installations in VICE app. Packages should come pre-installed. But need to run libraries:
 
 ```{r}
 library(dada2)
@@ -21,11 +20,15 @@ library(taxonomizr)
 ```
 
 
-### Get sample names- run in Terminal
-```bash
+### Get sample names
+(Run in bash Terminal)  
+```{bash}
 cd Raw_data
 ls *R1_001.fastq.gz | cut -f 1-2 -d "_" > ../samples
 ```
+
+
+
 ### Take a look at the untrimmed reads
 ```{r}
 ## import sample names as R variable
@@ -45,19 +48,19 @@ From the above you can see the reads are 150bp and the quality is good, with the
 
 ### Removing primers using cutadapt- run in Terminal
 
-Primers are universal MiFISh primers from [Miya et al. 2015](https://royalsocietypublishing.org/doi/10.1098/rsos.150088). Amplify a subregion of 12S rRNA that is 163-185 bp long.
+Primers are universal MiFISh primers from [Miya et al. 2015](https://royalsocietypublishing.org/doi/10.1098/rsos.150088). Amplify a subregion of 12S rRNA that is 163-185 bp long.  
 
-MiFISH-U-F, 5'-3': GTCGGTAAAACTCGTGCCAGC [rev comp: GCTGGCACGAGTTTTACCGAC]
+MiFISH-U-F, 5'-3': GTCGGTAAAACTCGTGCCAGC [rev comp: GCTGGCACGAGTTTTACCGAC]  
 MiFISH-U-R, 5'-3': CATAGTGGGGTATCTAATCCCAGTTTG [rev comp: CAAACTGGGATTAGATACCCCACTATG]
 
-Cut F primer from F reads with -g option
-Cut rev comp of R primer from F reads with -a option
-Cut R primer from R reads with -G option
-Cut rev comp of F primer from R reads with -A option
+Cut F primer from F reads with -g option  
+Cut rev comp of R primer from F reads with -a option  
+Cut R primer from R reads with -G option  
+Cut rev comp of F primer from R reads with -A option  
 
-Run cutadapt to remove primers. DUse min length of 100bp
+Run cutadapt to remove primers. Use min length of 100bp (bash)
 
-```bash
+```{bash}
 cd ..
 mkdir trimmed_fastq
 cd Raw_data
@@ -81,8 +84,8 @@ done
 ```
 
 
-Check output, how many were filtered out after cutadapt
-```bash
+Check output, how many were filtered out after cutadapt (bash)
+```{bash}
 paste ../samples <(grep "passing" ../trimmed_fastq/cutadapt_primer_trimming_stats.txt | cut -f3 -d "(" | tr -d ")") <(grep "filtered" ../trimmed_fastq/cutadapt_primer_trimming_stats.txt | cut -f3 -d "(" | tr -d ")")
 ```
 
@@ -145,14 +148,13 @@ T5S8_S52	96.3%	82.3%
 T5S9_S53	95.3%	82.2%
 ```
 
-So it retained ~68-99% of reads. Looking at stats output file, you can see the F and R primers were trimmed in almost all cases and the rev comp of each primer was trimmed in many cases too.
-
-Time to start processing with DADA2!
-
-# DADA2- back to R console
+So it retained ~60-99% of reads. Looking at the `cutadapt_primer_trimming_stats.txt` output file, you can see the F and R primers were trimmed in almost all cases and the rev comp of each primer was trimmed in many cases too.
 
 
-Now let's take a look at the trimmed reads.
+# DADA2
+
+
+Go back to R console and take a look at the trimmed reads.
 
 ```{r}
 forward_reads_trimmed <- paste0("trimmed_fastq/", samples, "_L001_R1_001_trimmed.fastq.gz")
@@ -166,11 +168,13 @@ plotQualityProfile(reverse_reads_trimmed[1:5])
 Comparing the above to the pre-trimmed reads, they look very similar because only very few had primers. 
 
 ### Quality Trimming
-Make a directory for filtered reads
-```bash
+Make a directory for filtered reads (bash)
+```{bash}
 cd ..
 mkdir filtered_fastq
 ```
+
+
 
 Make variables containing the file names for the new filtered forward and reverse reads that we will make
 ```{r}
@@ -179,12 +183,15 @@ filtered_reverse_reads <- paste0("filtered_fastq/",samples, "_L001_R2_001_filter
 ```
 
 
+
 Based on how the quality plots look, determine how much to cut from each side. Trim the F reads at 130 Trim the R reads to 120 Also I want to run this step to trim out the low-quality individual reads (set maxEE to 1 for both F and R reads). The rm.phix = TRUE option removes any leftover  PhiX genomic DNA (that gets added as a standard during sequencing). Pick a min length ~shorter than the min trimmed length (in this case 100 for R reads). I also set truncQ to truncate any read that has a quality score less than 2. Multithreading for this function does not work well (even according to documentation) so needed to skip that. Takes awhile  to run.
 ```{r}
 filtered_out <- filterAndTrim(forward_reads_trimmed, filtered_forward_reads,
                 reverse_reads_trimmed, filtered_reverse_reads, maxEE=c(2,2),
                 rm.phix=TRUE, minLen=100, truncLen=c(130,120), truncQ = 2, maxN=0)
 ```
+
+
 
 Check out the quality profiles again.
 ```{r}
@@ -202,6 +209,8 @@ Save workspace up to this point.
 ```{r}
 save.image(file = "upto_filterfastq.RData")
 ```
+
+
 
 Run if you come back and need to reload dataset
 ```{r}
@@ -226,23 +235,27 @@ plotErrors(err_reverse_reads, nominalQ=TRUE)
 
 The creators of DADA2 describe this [here](https://benjjneb.github.io/dada2/tutorial.html#learn-the-error-rates). The profiles are the error rates for each possible transition in the read (A->C, A->G, etc). Generally in the above plots, you want to see that the black dots (observed error rates for each quality score) match well with the black lines (the estimated error rate). The red line is what is expected based on the quality score.
 
-Backup again since this step above takes awhile
+Backup again since this step above takes awhile  
 Save workspace up to this point.
 ```{r}
 save.image(file = "upto_errorprofile.RData")
 ```
 
 
-### Inferring ASVs
-Use the dada command to infer ASVs. We are going to use the pooling option "psuedo" which is described [here](https://benjjneb.github.io/dada2/pseudo.html#Pseudo-pooling). This step also takes awhile
 
-Stoeckle et al. use the loess error model for error estimation, which is the default so I didn't set that here. They also set selfConsist = true so that "the error-model was independently built for each sample." They also turn pooling off (the default) and said that they "build an error model using a subset of the total reads from a sequencing run and provide this model to DADA2." However, in their code, the set the error model as `err=inflateErr(tperr1,3)` which uses an error model from a mock community. This is used as an example in the dada2 documentation but I don't think it should be used for real samples. Really they should have generated the model from their own data (as above). So I am keeping my own modifications here and not theirs. 
+### Inferring ASVs
+Use the dada command to infer ASVs. This step also takes awhile
+
+Stoeckle et al. use the loess error model for error estimation, which is the default so I didn't set that here. They also set selfConsist = true so that "the error-model was independently built for each sample." They also turn pooling off (the default) and said that they "build an error model using a subset of the total reads from a sequencing run and provide this model to DADA2." However, in their code, they set the error model as `err=inflateErr(tperr1,3)` which uses an error matrix, `tperr1`, from a mock community. This is used as an example in the dada2 documentation but I don't think it should be used for real samples. Really they should have generated the model from their own data (as above). So I am keeping my own modifications here and not theirs. This error model is generated from the samples themselves, with pseudopooling across samples. According to the developers: "pooling information across samples can increase sensitivity to sequence variants that may be present at very low frequencies in multiple samples." The dada2 package offers two types of pooling, complete sample pooling (which is computationally expensive) and pseudo-pooling, which gives the benefit of pooling but is not as intensive. This is further described at the developer's [site](https://benjjneb.github.io/dada2/pseudo.html#pseudo-pooling). 
 ```{r}
 dada_forward <- dada(filtered_forward_reads, err=err_forward_reads, pool="pseudo", multithread=TRUE) 
 dada_reverse <- dada(filtered_reverse_reads, err=err_reverse_reads, pool="pseudo", multithread=TRUE)
 ```
 
-Backup again since this step above takes awhile
+
+
+Backup again since this step above takes awhile  
+
 Save workspace up to this point.
 ```{r}
 save.image(file = "upto_inferasv.RData")
@@ -251,11 +264,12 @@ save.image(file = "upto_inferasv.RData")
 
 
 ### Merge inferred reads 
-Dada2 will merge reads wherever the overlap is identical between the F and R reads. I trimmed the F reads to 130 and R reads to 120 (150). The full amplicon size (based on primers) should be 163-185. Being conservative, use a length of 185. This means the F read is from position 1 to 130 and the R read is from position 185 to 65, leaving a region of overlap between position 65 and 130.
+Dada2 will merge reads wherever the overlap is identical between the F and R reads. I trimmed the F reads to 130 and R reads to 120 (150). The full amplicon size (based on primers) should be 163-185. Being conservative, use a length of 185. This means the F read is from position 1 to 130 and the R read is from position 185 to 65, leaving a region of overlap between position 65 and 130, or 65 total bp.  
 Since this is an estimate, leave a little wiggle room and set the minimum overlap to 30bp. Also set trimOverhang to true, which makes sure that a read doesn't go past its opposite primer (which probably wouldn't happpen any way due to trimming).
 ```{r}
 merged_amplicons <- mergePairs(dada_forward, filtered_forward_reads, dada_reverse, filtered_reverse_reads, trimOverhang=TRUE, minOverlap=30, verbose = TRUE)
 ```
+
 
 
 ```{r}
@@ -270,6 +284,8 @@ names(merged_amplicons$T1PosCon_S11) # the names() function on a dataframe gives
 # "sequence"  "abundance" "forward"   "reverse"   "nmatch"    "nmismatch" "nindel"    "prefer"    "accept"
 ```
 
+
+
 Back up again
 ```{r}
 save.image(file = "upto_merge.RData")
@@ -278,7 +294,6 @@ save.image(file = "upto_merge.RData")
 
 ### Creating a sequence table
 ```{r}
-#load("20200710backup/HRE_sewage_microbiome_upto_merge.RData")
 seqtab <- makeSequenceTable(merged_amplicons)
 class(seqtab) # matrix
 dim(seqtab) # 55 samples, 3512 unique ASVs
@@ -288,12 +303,12 @@ dim(seqtab) # 55 samples, 3512 unique ASVs
 ```{r}
 seqtab.nochim <- removeBimeraDenovo(seqtab, verbose=TRUE) 
 
-# Identified 3511 bimeras out of 31475 input sequences.
+# Identified 3121 bimeras out of 3512 input sequences.
 
-# though we a lot of unique sequences, we don't know if they held a lot in terms of abundance, this is one quick way to look at that
+# though we got a lot of unique sequences, we don't know if they held a lot in terms of abundance, this is one quick way to look at that
 sum(seqtab.nochim)/sum(seqtab) 
 # 0.9457455
-# good, we barely lost any in terms of abundance. That means the chimeras were very low abundance "ASVs"
+# good, we barely lost any in terms of abundance. That means the chimeras were very low abundance ASVs
 ```
 
 Backup again since this step above takes awhile
@@ -303,9 +318,9 @@ save.image(file = "upto_chimera.RData")
 ```
 
 
-# Summary of read counts through the pipeline
+### Summary of read counts through the pipeline
 ```{r}
-# set a little function
+# set function from Happy Belly
 getN <- function(x) sum(getUniques(x))
 
 # making a little table
@@ -357,76 +372,50 @@ write.table(otab,  file="results/otutable.csv")
 
 ## Annotation
 
-I am using blastn function in terminal, which can be installed with the blast package using conda `conda install blast`. I already had it installed but was having trouble bc v2.9 does not work on remote host (according to [this](https://www.biostars.org/p/400841/)). So I downgraded my blast to v2.6 with `conda install -c bioconda/label/cf201901 blast`
+I am using blastn function in terminal, which can be installed with the blast package from NCBI using conda `conda install blast`. I already had it installed but was having trouble bc v2.9 does not work on remote host (according to [this](https://www.biostars.org/p/400841/)). So I downgraded my blast to v2.6 with `conda install -c bioconda/label/cf201901 blast`
 
-
-#### Test on subset of samples. I made a `test_sequences.fasta` which only has first 5 ASVs from `tax_sequences.fasta`.
-```bash
-blastn -query results/test_sequences.fasta \
+#### Run blastn on remote NCBI server
+Use -max_target_seqs of 1 for now. Only puts top hit in the file
+```{bash}
+blastn -query results/tax_sequences.fasta \
 -db nt \
--out results/test_blast_ASVs_perc_99.txt \
--remote
-```
-That generates full blast results with alignments of of all hits for every ASV and more.
-
-#### Test2- only spit out best hit, collect table with PID, escore, etc
-```bash
-blastn -query results/test_sequences.fasta \
--db nt \
--out results/test2_blast.txt \
+-out results/tax_sequences_blast.txt \
 -remote \
 -max_target_seqs 1 \
--outfmt 6 #\
-```
-OK that outfmt option #6 is a table that spits out:
- 1.	 qseqid	 query (e.g., unknown gene) sequence id
- 2.	 sseqid	 subject (e.g., reference genome) sequence id
- 3.	 pident	 percentage of identical matches
- 4.	 length	 alignment length (sequence overlap)
- 5.	 mismatch	 number of mismatches
- 6.	 gapopen	 number of gap openings
- 7.	 qstart	 start of alignment in query
- 8.	 qend	 end of alignment in query
- 9.	 sstart	 start of alignment in subject
- 10.	 send	 end of alignment in subject
- 11.	 evalue	 expect value
- 12.	 bitscore	 bit score
-
-But I also want to add info about blast subject. Try adding options:
-staxids   Subject Taxonomy ID(s), separated by a ';'
-sscinames Subject Scientific Name(s), separated by a ';'
-sblastnames Subject Blast Name(s), separated by a ';'   (in alphabetical order)
-stitle      Subject Title
-
-#### Test3- take out `gapopen qstart qend sstart send` from table and add in `staxids sscinames sblastnames stitle`
-```bash
-blastn -query results/test_sequences.fasta \
--db nt \
--out results/test3_blast.txt \
--remote \
--max_target_seqs 1 \
--outfmt "6 qseqid sseqid pident length mismatch evalue bitscore staxids sscinames sblastnames stitle" 
+-outfmt "6 qseqid sseqid pident length mismatch evalue bitscore staxids stitle" 
 ```
 
-It doesn't work to download the [taxdb](ftp://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz) because its working on remote server and database is local.
+The headings of the table are the following parameters from NCBI:  
+- seqid:	 query (e.g., unknown gene) sequence id  
+- sseqid:	 subject (e.g., reference genome) sequence id  
+- pident:	 percentage of identical matches  
+- length:	 alignment length (sequence overlap)  
+- mismatch:	 number of mismatches  
+- evalue:	 expect value  
+- bitscore:	 bit score  
+- staxids:   Subject Taxonomy ID(s), separated by a ';'  
+- stitle:      Subject Title  
 
-Instead, re-run without `sscinames sblastnames` then add taxonomy using R package.
 
-#### Test4 Link Acc Numbers from with Taxonomy from NCBI. 
+
+#### Link Accession Numbers  with Taxonomy from NCBI
 I found an R package for this called [Taxonomizr](https://github.com/sherrillmix/taxonomizr).
 
 
-Download all tax assignments in NCBI and make SQLite database (this takes several hours). Store this file is a higer folder in a shared place instead of downloading it each time.
+Download all tax assignments in NCBI and make SQLite database (this takes several hours). Store this file in a shared place instead of downloading it each time (because it's huge)
 
 ```{r}
 prepareDatabase('databases/accessionTaxa.sql')
 ```
 
-Read blast results from results table into R 
+
+
+Read blast results from  table into R 
 ```{r}
-blastResults<-read.table('results/test3_blast.txt',header=FALSE,stringsAsFactors=FALSE,fill=TRUE)
-blastResults
+blastResults<-read.table('results/tax_sequences_blast.txt',header=FALSE,stringsAsFactors=FALSE,fill=TRUE)
+blastResults[1:5,]
 ```
+
 
 
 and grab accesion numbers
@@ -436,18 +425,24 @@ accessions<-sapply(strsplit(blastResults[,2],'\\|'),'[',4)
 accessions
 ```
 
+
+
 Get taxonomy ID for each accesion number
 ```{r}
 taxaId<-accessionToTaxa(accessions,"databases/accessionTaxa.sql")
 print(taxaId)
 ```
 
+
+
 And get taxonomy for those tax IDs
 ```{r}
-getTaxonomy(taxaId,'databases/accessionTaxa.sql')
+getTaxonomy(taxaId,'databases/accessionTaxa.sql')[1:5,]
 ```
 
-Next append taxonomy to results file and export
+
+
+Append taxonomy to results file and export as one file....
 
 
 
