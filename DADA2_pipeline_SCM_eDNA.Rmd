@@ -311,6 +311,9 @@ seqtab.nochim <- removeBimeraDenovo(seqtab, verbose=TRUE)
 sum(seqtab.nochim)/sum(seqtab) 
 # 0.9457455
 # good, we barely lost any in terms of abundance. That means the chimeras were very low abundance ASVs
+
+dim(seqtab.nochim) # 55 samples, 391 unique ASVs remain
+
 ```
 
 Backup again since this step above takes awhile
@@ -366,7 +369,7 @@ names(seqs_for_blast) <-  sapply(seq(length(seqs)),function(x) {paste0("Seq_",x)
 
 # Write the fasta sequences and the OTU table
 writeFasta(seqs, "results/tax_sequences.fasta")
-write.table(otab,  file="results/otutable.csv")
+write.table(otab,  file="results/otutable.csv", col.names = NA)
 ```
 
 
@@ -375,6 +378,7 @@ write.table(otab,  file="results/otutable.csv")
 ## Annotation
 
 I am using blastn function in terminal, which can be installed with the blast package from NCBI using conda `conda install blast`. I already had it installed but was having trouble bc v2.9 does not work on remote host (according to [this](https://www.biostars.org/p/400841/)). So I downgraded my blast to v2.6 with `conda install -c bioconda/label/cf201901 blast`
+
 
 #### Run blastn on remote NCBI server
 Use -max_target_seqs of 1 for now. Only puts top hit in the file
@@ -400,7 +404,7 @@ The headings of the table are the following parameters from NCBI:
 
 
 
-#### Link Accession Numbers  with Taxonomy from NCBI
+#### Link Accession Numbers with Taxonomy from NCBI
 I found an R package for this called [Taxonomizr](https://github.com/sherrillmix/taxonomizr).
 
 
