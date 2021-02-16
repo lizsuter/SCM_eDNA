@@ -418,20 +418,23 @@ prepareDatabase('databases/accessionTaxa.sql')
 
 Read blast results from  table into R and give it headers
 ```{r}
-blastResults<-read.table('results/tax_sequences_blast.txt', header=FALSE, stringsAsFactors=FALSE,fill=TRUE)
+blastResults<-read_table2('results/tax_sequences_blast.txt', col_names = FALSE)
+blastResults <- unite(blastResults, Ref_Seq_title, X9, X10, X11, X12, X13, X14, X15, sep='_')
 colnames(blastResults) <- c("ASV_ID", "ref_seq_ID", "PID", "alnmt_len", "mismatch", "eval", "bscore", "RefSeq_Tax_ID", "Ref_Seq_title")
-blastResults[1:10,]
+blastResults
 ```
-
 
 
 and grab accesion numbers
 ```{r}
-#grab the 4th |-separated field from the reference name in the second column
-accessions<-sapply(strsplit(blastResults[,2],'\\|'),'[',4)
-accessions[1:10]
-```
+#grab the index of the accession nunmbers
+# acc numbers are 4th |-separated field from the reference name in the second column
+acc_matrix <- unlist(str_split(as.character(blastResults[,2]),'\\|'))
+ind <- seq(from = 4, to = length(acc_matrix), by = 4)
 
+accessions <- acc_matrix[ind]
+accessions
+```
 
 
 Get taxonomy ID for each accesion number
@@ -451,7 +454,7 @@ colnames(taxonomy_table)[dim(taxonomy_table)[2]] <- "RefSeq_Tax_ID"
 rownames(taxonomy_table) <- NULL
 
 taxonomy_table <- as.data.frame(taxonomy_table)
-taxonomy_table[1:10,]
+taxonomy_table
 ```
 
 

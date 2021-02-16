@@ -7,6 +7,12 @@ editor_options:
   chunk_output_type: inline
 ---
 
+[Link](https://htmlpreview.github.io/?https://github.com/lizsuter/SCM_eDNA/blob/main/Ecol_Analysis.nb.html) to notebook  
+
+[Link](https://github.com/lizsuter/SCM_eDNA) to github repo.
+<br>
+
+
 ## Load packages
 
 ```{r}
@@ -35,38 +41,52 @@ library(withr)
 ## Prepare the data
 
 ### Import 
-# come back and upload correct metadata file
-Metadata:
+
+#### Metadata:
+#### come back and upload correct metadata file
 ```{r}
 metadata <- read_csv("sample_data.csv")
 ```
 
 
-DADA2 results:
+#### DADA2 results:
+Import count table and taxonomy file. I slightly modified otutable.csv in Excel to otutable_mod.csv to remove the quotes around seq names and put NA placehoder as first col name (which was above row names)
 ```{r}
 # Import Count table. Skip first row of tsv file, which is just some text
 count_table <- read_table2("results/otutable_mod.csv")
-# I slightly modified otutable.csv in Excel to otutable_mod.csv to remove the quotes around seq names and put NA placehoder as first col name
 
 
 # Import taxonomy of ASVs
 taxonomy <- read_csv(file="results/tax_sequences_blast_taxonomy.csv")
-# And specify that the first column of data are rownames
-taxonomy <- column_to_rownames(taxonomy, var = colnames(taxonomy)[1])
+# remove first col of sequential numbers
+taxonomy[,1] <- NULL
+# # And specify that the first column of data are rownames
+# taxonomy <- column_to_rownames(taxonomy, var = colnames(taxonomy$ASV_ID))
 
 ```
 
+
+Preview datasets
+```{r}
+count_table
+taxonomy
+```
 
 
 ### Rarefaction curves
 
 ```{r}
 # Use rarecurve, from the Vegan package. Rarcurve expects the dataset as a dataframe so we need to use as.data.frame again:
-count_table_df <- as.data.frame(count_table)
+count_table_df <- as.data.frame(t(count_table))
+colnames(count_table_df) <- count_table_df[1,]
+count_table_df <- count_table_df[-c(1),]
+rownames(count_table_df) <- NULL
 
 # Plot the rarefaction curves, color-coding by the colors listed in sample_info_tab, which indicate sample type, and transforming using t() again
 # Running this 5-10 samples at a time because otherwise it takes a long time to render
-rarecurve(t(count_table_df), step=100, cex=0.5, ylab="ASVs", label=T)
+
+rarecurve(as.numeric(count_table_df[,]), step=100, cex=0.5, ylab="ASVs", label=T)
+##STOPPED HERE TUES NIGHT. ALSO CHECK ON RERUN OF BLAST STEP IN OTHER NOTEBOOK
 ```
 
 Many of these seem to be sequenced to completion but for the low ASV abundance ones, it's unclear.
