@@ -1,0 +1,1412 @@
+---
+title: "Processing Results from DADA2 to make plots, do some statistics"
+author: "Liz Suter"
+date: "Feb. 16 2021"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+## Load packages
+
+```{r}
+library(tidyverse)
+library(phyloseq)
+library(dada2)
+library(Biostrings)
+library(DECIPHER)
+library(phangorn)
+library(readr)
+library(seqinr)
+library(decontam)
+library(ape)
+library(vegan)
+#library(philr)
+library(RColorBrewer)
+library(microbiome)
+library(DESeq2)
+library(compositions);
+library(cowplot)
+library(plotly)
+library(htmlwidgets)
+library(withr)
+```
+
+## Prepare the data
+
+### Import 
+# come back and upload correct metadata file
+Metadata:
+```{r}
+metadata <- read_csv("sample_data.csv")
+```
+
+
+DADA2 results:
+```{r}
+# Import Count table. Skip first row of tsv file, which is just some text
+count_table <- read_table2("results/otutable_mod.csv")
+# I slightly modified otutable.csv in Excel to otutable_mod.csv to remove the quotes around seq names and put NA placehoder as first col name
+
+
+# Import taxonomy of ASVs
+taxonomy <- read_csv(file="results/tax_sequences_blast_taxonomy.csv")
+# And specify that the first column of data are rownames
+taxonomy <- column_to_rownames(taxonomy, var = colnames(taxonomy)[1])
+
+```
+
+
+
+### Rarefaction curves
+
+```{r}
+# Use rarecurve, from the Vegan package. Rarcurve expects the dataset as a dataframe so we need to use as.data.frame again:
+count_table_df <- as.data.frame(count_table)
+
+# Plot the rarefaction curves, color-coding by the colors listed in sample_info_tab, which indicate sample type, and transforming using t() again
+# Running this 5-10 samples at a time because otherwise it takes a long time to render
+rarecurve(t(count_table_df), step=100, cex=0.5, ylab="ASVs", label=T)
+```
+
+Many of these seem to be sequenced to completion but for the low ASV abundance ones, it's unclear.
+
+### Remove singletons
+
+```{r}
+count_table_no_singletons <- filter(count_table,rowSums(count_table)>1)
+# retains all 2439 ASVs
+```
+
+
+
+### Make Phylo Tree  
+This process takes a LONG time (>24 HOURS) so run once and save .RData object
+In the Dada2 tools, there are no options to build a tree (unlike in Qiime2) but we can build it here using DECIPHER and phangorn
+
+(Based on [https://f1000research.com/articles/5-1492/v2](https://f1000research.com/articles/5-1492/v2))
+
+
+Make an alignment using tools from Decipher (Note- alignment step takes several hours. Commented out for now. Only need to run once)
+```{r}
+## import fasta
+fas <- "dada2_results/ASVs.fa"
+seqs <- readDNAStringSet(fas)
+seqs
+
+# perform the alignment
+aligned <- AlignSeqs(seqs) # automatically detects and uses all cores
+
+# view the alignment in a browser (optional)
+BrowseSeqs(aligned, highlight=0)
+
+# write out aligned sequence file
+writeXStringSet(aligned, file="ASVs.aligned.fasta")
+```
+
+
+Since previous step took awhile to generate, save current variables in environment as RData object
+```{r}
+save.image("backups/upto_alignment.RData")
+```
+
+
+Use phangorn package to build tree. Here we are building a maximum likelihood neighbor-joining tree. (Also takes a while to run. Comment out unless running)
+
+```{r}
+# phang.align <- phyDat(as(aligned, "matrix"), type="DNA") # convert to phyDat format
+# dm <- dist.ml(phang.align) # calculate pairwise distance matrix
+# treeNJ <- NJ(dm) # perform neighbor-joining tree method
+# fit = pml(treeNJ, data=phang.align) # compute intermal max likelihood
+```
+
+### Save and re-load dataset
+Since that step takes a long time, save all variables up to this point in environmnet as RData object
+```{r}
+save.image("backups/upto_tree.RData")
+```
+
+
+
+### Make phyloseq object
+
+Here we will do ordinations using the phyloseq package, which first requires making phyloseq objects out of each of our input data tables (in the last tutorial, I imported the tree using phyloseq so it is already a phyloseq object)
+
+```{r}
+ASV	=	otu_table(data.frame(count_table_no_singletons), taxa_are_rows =  TRUE)
+TAX	=	tax_table(as.matrix(taxonomy))
+META	=	sample_data(data.frame(metadata, row.names = metadata$`seq_ID`))
+TREE = phy_tree(fit$tree)
+```
+
+
+First check that the inputs are in compatible formats by checking for ASV names with the phyloseq function, taxa_names
+```{r}
+head(taxa_names(TAX))
+head(taxa_names(ASV))
+head(taxa_names(TREE))
+```
+
+
+And check sample names were also detected
+```{r}
+# Modify taxa names in ASV, which are formatted with the sample ID, underscor, fastq ID. Don't need this fastq ID anymore and want it to match the sample names from metadata
+sample_names(ASV) <-  sample_names(ASV) %>%
+  str_replace_all(pattern = "_S[:digit:]+",replacement = "")
+
+
+head(sample_names(ASV))
+head(sample_names(META))
+```
+
+And make the phyloseq object
+```{r}
+ps <- phyloseq(ASV,	TAX,	META , TREE)
+```
+
+
+
+Check some features of the phyloseq object
+```{r}
+rank_names(ps)
+
+unique(tax_table(ps)[, "domain"])
+
+table(tax_table(ps)[, "domain"], exclude = NULL)
+
+```
+
+
+Filter out those ambigious Domain annotations
+```{r}
+ps <- subset_taxa(ps, !is.na(domain) & !domain %in% c("", "Eukaryota"))
+
+table(tax_table(ps)[, "domain"], exclude = NULL)
+```
+
+Check out the phyla names
+```{r}
+table(tax_table(ps)[, "phylum"], exclude = NULL)
+```
+
+
+Filter out any with "NA" as phylum. For now, I am leaving in phyla with low abundance 
+```{r}
+ps <- subset_taxa(ps, !is.na(phylum) & !phylum %in% c(""))
+
+table(tax_table(ps)[, "phylum"], exclude = NULL)
+```
+After the above, 1685 ASVs remain
+
+
+### Re-root tree 
+Have to do this because you may have removed the root of your tree when pruning). 
+(I found this handy function from [here](https://john-quensen.com/r/unifrac-and-tree-roots/) which picks the longest branch to root from). 
+
+```{r}
+# first define function from link above to find furthest outgroup
+pick_new_outgroup <- function(tree.unrooted){
+require("magrittr")
+require("data.table")
+require("ape") # ape::Ntip
+# tablify parts of tree that we need.
+treeDT <- 
+     cbind(
+         data.table(tree.unrooted$edge),
+         data.table(length = tree.unrooted$edge.length)
+     )[1:Ntip(tree.unrooted)] %>% 
+ cbind(data.table(id = tree.unrooted$tip.label))
+ # Take the longest terminal branch as outgroup
+ new.outgroup <- treeDT[which.max(length)]$id
+ return(new.outgroup) }
+
+# then run on my phyloseq tree
+my.tree <- phy_tree(ps)
+out.group <- pick_new_outgroup(my.tree)
+out.group
+
+# Then use this outgroup to root the tree
+new.tree1 <- ape::root(my.tree, outgroup=out.group, resolve.root=TRUE)
+
+
+phy_tree(ps) <- new.tree1
+
+# Check if tree is binary (dichotomous not multichotomous)
+is.binary.tree(phy_tree(ps))
+
+# If false, would have to run
+# new.tree2 <- ape::multi2di(new.tree1)
+# phy_tree(ps) <- new.tree2
+# phy_tree(ps)
+
+
+```
+
+
+## Abundance plots
+
+
+### All phyla
+
+Check overall how the phyla are distributed among samples. Phyloseq makes this easy
+
+```{r}
+# First aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
+phylumGlommed = tax_glom(ps, "phylum")
+
+# There are many phyla here, so have to make a custom color palette by interpolating from an existing one in RColorBrewer
+colourCount = length(table(tax_table(ps)[, "phylum"], exclude = NULL))
+getPalette = colorRampPalette(brewer.pal(11, "Spectral"))
+PhylaPalette = getPalette(colourCount)
+
+# and plot
+plot_bar(phylumGlommed, x = "Sample", fill = "phylum") + 
+  scale_fill_manual(values = PhylaPalette)
+```
+
+Plot compositional (relative abundances) instead of absolute abundance using microbiome::transform
+
+```{r}
+ps_ra <- microbiome::transform(ps, transform = "compositional")
+head(otu_table(ps_ra))
+```
+
+```{r}
+# Then aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
+phylumGlommed_RA = tax_glom(ps_ra, "phylum")
+# and plot
+phyla_barplot <- plot_bar(phylumGlommed_RA, x = "Sample", fill = "phylum") + 
+  scale_fill_manual(values = PhylaPalette) +
+  theme(legend.text = element_text(size = 10)) +
+  facet_wrap(~host_animal)
+  
+
+phyla_barplot
+
+# export
+ggsave("Figures/phyla_barplot.eps",phyla_barplot, width = 15, height = 5, units = c("in"))
+```
+The HSC samples seem to have more Verrucomicrobiota and less Firmicutes than the oyster samples. Otherwise they look kind of similar across the two animal types 
+
+Check abundance plots for some phyla of interest
+
+
+### The Proteobacteria
+```{r}
+# subset to proteobacteria
+ps_proteo_ra <- subset_taxa(ps_ra, phylum == "Proteobacteria")
+
+# define colors
+colourCount = length(table(tax_table(ps_proteo_ra)[, "order"], exclude = NULL))
+getPalette = colorRampPalette(brewer.pal(11, "Spectral"))
+OrderPalette = getPalette(colourCount)
+
+# Then aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
+orderGlommed_RA = tax_glom(ps_proteo_ra, "order")
+# and plot
+proteobac_orders_barplot <- plot_bar(orderGlommed_RA, fill = "order") + 
+  scale_fill_manual(values = OrderPalette) +
+  facet_wrap(~host_animal)
+
+proteobac_orders_barplot
+
+# export
+ggsave("figures/proteobac_orders_barplot.eps",proteobac_orders_barplot, width = 15, height = 5, units = c("in"))
+
+```
+
+
+### The Actinobacteriota 
+```{r}
+# subset 
+ps_actino_ra <- subset_taxa(ps_ra, phylum == "Actinobacteriota")
+
+# define colors
+colourCount = length(table(tax_table(ps_actino_ra)[, "order"], exclude = NULL))
+getPalette = colorRampPalette(brewer.pal(11, "Spectral"))
+OrderPalette = getPalette(colourCount)
+
+# Then aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
+actino_orderGlommed_RA = tax_glom(ps_actino_ra, "order")
+# and plot
+actino_orders_barplot <- plot_bar(actino_orderGlommed_RA, fill = "order") + 
+  scale_fill_manual(values = OrderPalette) +
+  facet_wrap(~host_animal)
+
+actino_orders_barplot
+
+ggsave("figures/actino_orders_barplot.eps",actino_orders_barplot, width = 15, height = 5, units = c("in"))
+```
+
+
+
+
+
+
+
+
+## Ordinations 
+
+
+### First, more filtering
+Need to constrain the size of the count tables more, otherwise the matrix algebra during ordinations overwhelems R.
+
+McMurdie and Holmes (2013) filter out taxa that were not seen with more than 3 counts in at least 20% of the samples. We also want to add a pseduocount of 1 to all counts. This is so that later when we do different calculations (log, division, etc) we don't get back errors due to zeroes
+```{r}
+ps_filtered = filter_taxa(ps, function(x) sum(x > 3) > (0.2*length(x)), TRUE) 
+ps_filtered <- transform_sample_counts(ps_filtered, function(x) x+1)
+
+# Also make a filtered version of the relative abundance count table (for plotting purposes)
+ps_ra_filtered <- prune_taxa(taxa_names(ps_filtered),ps_ra) # prune from ps_ra object (relative abundances)
+
+# check number of ASVs in each
+ps
+ps_filtered
+ps_ra_filtered
+
+```
+That reduced the otu table from 1685 ASVs to 97- note this is definitely not statistically representative. Just peak at some data for now.
+
+
+Check remaining phyla
+```{r}
+table(tax_table(ps_filtered)[, "phylum"], exclude = NULL)
+```
+
+
+
+Check by plotting phyla again
+```{r}
+# There are many phyla here, so have to make a custom color palette by interpolating from an existing one in RColorBrewer
+colourCount = length(table(tax_table(ps_ra_filtered)[, "phylum"], exclude = NULL))
+getPalette = colorRampPalette(brewer.pal(11, "Spectral"))
+PhylaFilteredPalette = getPalette(colourCount)
+
+phylum_filtered_Glommed_RA = tax_glom(ps_ra_filtered, "phylum")
+# and plot
+phyla_barplot_filtered <- plot_bar(phylum_filtered_Glommed_RA, x = "Sample", fill = "phylum") + 
+  scale_fill_manual(values = PhylaFilteredPalette) +
+  theme(legend.text = element_text(size = 10)) +
+  facet_wrap(~host_animal)
+
+phyla_barplot_filtered
+
+# export
+ggsave("figures/phyla_barplot_filtered.eps",phyla_barplot_filtered, width = 15, height = 5, units = c("in"))
+
+```
+
+
+
+Lastly, reroot-the tree affiliated with the ps_filtered and ps_ra_filtered dataset, since the root may have been removed when filtering
+
+```{r}
+# first define function from link above to find furthest outgroup
+pick_new_outgroup <- function(tree.unrooted){
+require("magrittr")
+require("data.table")
+require("ape") # ape::Ntip
+# tablify parts of tree that we need.
+treeDT <- 
+     cbind(
+         data.table(tree.unrooted$edge),
+         data.table(length = tree.unrooted$edge.length)
+     )[1:Ntip(tree.unrooted)] %>% 
+ cbind(data.table(id = tree.unrooted$tip.label))
+ # Take the longest terminal branch as outgroup
+ new.outgroup <- treeDT[which.max(length)]$id
+ return(new.outgroup) }
+
+# then run on my phyloseq tree
+my.tree <- phy_tree(ps_filtered)
+out.group <- pick_new_outgroup(my.tree)
+out.group
+
+# Then use this outgroup to root the tree
+new.tree1 <- ape::root(my.tree, outgroup=out.group, resolve.root=TRUE)
+
+
+phy_tree(ps_filtered) <- new.tree1
+phy_tree(ps_ra_filtered) <- new.tree1
+
+# Check if tree is binary (not multichotomous)
+is.binary.tree(phy_tree(ps_filtered))
+
+```
+
+
+Now move onto ordinations using this filtered dataset
+
+### Test for compositionality
+based on Coenen et al. tutorials for clustering. See [repo](https://github.com/WeitzGroup/analyzing_microbiome_timeseries)
+```{r}
+# Estimate covariance matrix for OTUs
+covariance_matrix <- as.matrix(otu_table(ps_filtered)) %*% t(otu_table(ps_filtered))
+# %*% = matrix multiplication sign in R; used here to multiply OTU/ASV data matrix to itself to estimate covariance.
+
+# Evaluate determinant of covariance matrix
+cov_determinant <- det(covariance_matrix)
+cov_determinant
+```
+The determinant of the covariance matrix (what we just calculated) is equivalent to the product of the proportion of variance explained by every PCA axis. If the determinant is 0, that means there is an axis which explains 0 variance that we can't separate from the other axes. This means the data need to be transformed to be suitable for PCA. 
+
+
+
+### PCA
+PCA is essentially a type of PCoA  using the Euclidean distance matrix as input. When combined with a log-ratio transformation of the count table, this is deemed appropriate for *compositional* datasets.
+
+First do a **CLR, centered log ratio** transformation of the absolute abundance data (after filtering), as suggested by [Gloor et al. 2017](https://www.frontiersin.org/articles/10.3389/fmicb.2017.02224/full) and check the determinant of this matrix. Compare it to the determinant without any transformation.
+{Also commented out for now because takes a few minutes}
+```{r}
+# Estimate covariance matrix for absolute abundance ASV table
+covariance_matrix <- as.matrix(otu_table(ps_filtered)) %*% t(otu_table(ps_filtered))
+# %*% = matrix multiplication sign in R; used here to multiply OTU/ASV data matrix to itself to estimate covariance.
+
+# Evaluate determinant of covariance matrix
+cov_determinant <- det(covariance_matrix)
+
+# Estimate covariance matrix for CLR-transformed ASV table
+clr_asv_table_ps_filtered <- data.frame(compositions::clr(t(otu_table(ps_filtered))))
+
+## Check new determinant of clr transformed table
+new_covdet <- det(as.matrix(clr_asv_table_ps_filtered) %*% t(clr_asv_table_ps_filtered))
+
+# Compare
+cov_determinant #Original Count Data
+new_covdet # New
+```
+The determinant of a covariance matrix = the product of the proportion of variance explained by every PCA axis. If one axis is zero, the product (determinant) is 0, and we can't separate that axis from the other axes. Thus, these data require transformation in order to be suitable for ordinations. The determinant of the CLR-transformed table is not zero, so we can proceed with PCA of the CLR-transformed data. 
+
+
+Generate the PCA and visualize axes
+```{r}
+# Generate a Principle Component Analysis (PCA) and evaluated based on the eigen decomposition from sample covariance matrix. 
+lograt_pca <- prcomp(clr_asv_table_ps_filtered) 
+# NOTE- this is equivalent to first making a Euclidean distance matrix using the CLR data table and then running a PCoA. A Euclidean distance matrix of a log-transformed data table = an Aitchison distance matrix. So this is equivalent to the compositional methods listed in Gloor et al.
+
+# Visual representation with a screeplot
+lograt_variances <- as.data.frame(lograt_pca$sdev^2/sum(lograt_pca$sdev^2)) %>% #Extract axes
+  # Format to plot
+  select(PercVar = 'lograt_pca$sdev^2/sum(lograt_pca$sdev^2)') %>% 
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+head(lograt_variances)
+
+# Plot screeplot
+ggplot(lograt_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Log-Ratio PCA Screeplot, CLR Tranformation")
+```
+
+A faithful representation is to plot this ordination in 2D because the 3rd and 4th axes explain very low % of variances, while the 1st and 2nd explain a decently large proportion of variance (38.7 + 16.4 = 55.1%)
+
+Visualize the PCA- 
+##CONTINUE HERE, as of JAN. 13
+```{r}
+# lograt_pca$x #View PC values
+pca_lograt_frame <- data.frame(lograt_pca$x) %>% 
+  rownames_to_column(var = "seq_ID")
+
+# Merge metadata into the pca data table
+pca_lograt_frame <- left_join(pca_lograt_frame, metadata, by = "seq_ID")
+head(pca_lograt_frame)
+
+
+# Plot PCA with pH
+pca_lograt_salinity <- ggplot(pca_lograt_frame, aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = pH, shape = host_animal), size = 4) +
+  geom_text(aes(label = `seq_ID`), size = 3, hjust = 0, vjust = 0) +
+  ylab(paste0('PC2 ', round(lograt_variances[2,2]*100,2),'%')) + #Extract y axis value from variance
+  xlab(paste0('PC1 ', round(lograt_variances[1,2]*100,2),'%')) + #Extract x axis value from variance
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_filtered)$pH), max(sample_data(ps_filtered)$pH)), name = 'pH') + 
+  ggtitle('CLR-Euclidean PCA') +
+  coord_fixed(ratio = 1) +
+  theme_bw()
+
+pca_lograt_salinity
+
+ggsave("figures/pca_lograt_salinity.eps",pca_lograt_salinity, width = 7, height = 5, units = c("in"))
+
+# Plot PCA with Temperature
+pca_lograt_temp <- ggplot(pca_lograt_frame, aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = Temperature, shape = Size_fraction), size = 4) +
+  geom_text(aes(label = `#SampleID`), size = 3, hjust = 0, vjust = 0) +
+  ylab(paste0('PC2 ', round(lograt_variances[2,2]*100,2),'%')) + #Extract y axis value from variance
+  xlab(paste0('PC1 ', round(lograt_variances[1,2]*100,2),'%')) + #Extract x axis value from variance
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_filtered)$Temperature), max(sample_data(ps_filtered)$Temperature)), name = 'Temperature') + 
+  ggtitle('CLR-Euclidean PCA') +
+  coord_fixed(ratio = 1) +
+  theme_bw()
+
+pca_lograt_temp
+
+ggsave("figures/pca_lograt_temp.eps",pca_lograt_temp, width = 7, height = 5, units = c("in"))
+
+```
+The CLR-Euclidean PCA reveals a separation among samples driven in part by salinity and temperature, except for samples N1 and N2 (all the way on the bottom left) which cluster differently.
+The samples from the same location and different size fractions are similar in most cases. (Eg. R1/R2 are close to G1/2, etc)
+
+
+
+
+### PhILR
+The compositional approach to ordinations that takes into account phylogenetic relatedness is **PhILR**, which uses the ILR transformation and calculates a weighted abundance ("balance"). It also scales the balances by phylogenetic distances, therefore taking into account phylogenetic relatedness (similar to Unifrac).
+
+Based this on the Silverman et al. [tutorial](https://bioconductor.org/packages/release/bioc/vignettes/philr/inst/doc/philr-intro.html).
+
+
+Prepare the data and load the philr package. (Note: I did not load this this earlier because there is an incompatibility with phyloseq and one of the philr dependencies and it spits out a warning every time I ran anything in phyloseq. I wanted to limit that printing out in the markdown file. The red text can be ignored).
+```{r}
+# Make node labels in tree: n1, n2, etc.
+phy_tree(ps_filtered) <- makeNodeLabel(phy_tree(ps_filtered), method="number", prefix='n')
+
+# Load philr
+library(philr)
+
+# Name the balances (see Fig. 1 from Silverman et al. for depiction of "balance") 
+name.balance(phy_tree(ps_filtered), tax_table(ps_filtered), 'n1')
+
+```
+
+Extract the individual components from the phyloseq object and take a look
+```{r}
+otu.table2 <- t(otu_table(ps_filtered))
+tree2 <- phy_tree(ps_filtered)
+metadata2 <- sample_data(ps_filtered)
+tax2 <- tax_table(ps_filtered)
+
+otu.table2[1:5,1:5] # ASV Table
+tree2 # Phylogenetic Tree
+head(metadata2,2) # Metadata
+head(tax2,5) # taxonomy table
+```
+
+Next, pass the otu table, etc into PhILR, which will convert the tree to a sequential binary partition representation, calculate the weights of the taxa, build the contrast matrix, convert the OTU table to relative abundance (NOTE: you should pass absolute abundances into this function because it calculates the RA within it), transform using the phylogenetic-ILR transformation, and weigh by phylogenetic distances
+
+```{r}
+ps.philr <- philr(otu.table2, tree2, 
+                  part.weights='enorm.x.gm.counts', 
+                  ilr.weights='blw.sqrt')
+```
+
+Check output
+```{r}
+ps.philr[1:5,1:5]
+```
+Now the "OTU table" is presented with samples as rows and balances as columns. Each balance is associated with a node of the tree, n1, n2, etc.
+
+
+
+Next do the ordination using a Euclidean distance matrix and check the screeplot
+```{r}
+ps.philr.dist.euc <- dist(ps.philr, method="euclidean")
+ps.philr.pcoa <- ordinate(ps_filtered, 'PCoA', distance=ps.philr.dist.euc)
+
+# Extract variances from pcoa, from jaccard calculated dist. metric
+philr_variances <- data.frame(ps.philr.pcoa$values$Relative_eig) %>% 
+  select(PercVar = 'ps.philr.pcoa.values.Relative_eig') %>% 
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+head(philr_variances)
+
+# Make a screeplot
+ggplot(philr_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "PhILR PCoA Screeplot")
+```
+Based on above, it's fair to plot the first two axes. This would be 39.1+19.8 = 58.9% total variance
+
+
+
+Plot the ordination using phyloseq syntax
+```{r}
+# Plot  with salinity
+ps.philr.pcoa.plot.salinity <- plot_ordination(ps_filtered, ps.philr.pcoa, shape="Size_fraction", color='Salinity') +   geom_point(size = 4) +
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_filtered)$Salinity), max(sample_data(ps_filtered)$Salinity)), name = 'Salinity') + 
+  geom_text(aes(label = X.SampleID), size = 3, hjust = 0, vjust = 0, , color = "black") +
+  ggtitle('PhILR PCoA Ordination') +
+  coord_fixed(ratio = 1) +
+  theme_bw()
+
+ps.philr.pcoa.plot.salinity
+
+ggsave("figures/ps.philr.pcoa.plot.salinity.eps",ps.philr.pcoa.plot.salinity, width = 7, height = 5, units = c("in"))
+
+# Plot with Temperature
+ps.philr.pcoa.plot.temp <- plot_ordination(ps_filtered, ps.philr.pcoa, shape="Size_fraction", color='Temperature') +   geom_point(size = 4) +
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_filtered)$Temperature), max(sample_data(ps_filtered)$Temperature)), name = 'Temperature') + 
+  geom_text(aes(label = X.SampleID), size = 3, hjust = 0, vjust = 0, , color = "black") +
+  ggtitle('PhILR PCoA Ordination') +
+  coord_fixed(ratio = 1) +
+  theme_bw()
+
+ps.philr.pcoa.plot.temp
+
+ggsave("figures/ps.philr.pcoa.plot.temp.eps",ps.philr.pcoa.plot.temp, width = 7, height = 5, units = c("in"))
+
+```
+The plot above is very similar to the PCA with a minor difference: there is more distance separation among the PA/Fl samples along axis 1. Because this ordination is weighted by phylogenetic relatedness, this means that differences between PA and FL are driven by abundances of taxa that are phylogenetically distinct (ie. not closely related)
+
+
+
+### PCoA
+The more traditional approach to ordinations is to do a PCoA on a distance matrix such as Bray-Curtis, Jaccard, or Unifrac. While these are not considered compositional approaches, when combined with pre-treatment (transformations) they become more appropriate. One such transformation that I will use here is the Hellinger transformation.
+
+The different distance matrices also tell you a few different things about the dataset so I will run through this to try to see if I can tease those out. 
+
+Before calculating any distance matrix, do a transformation of the filtered count table. Hellinger transformation is the square root of the relative abundance, so calculate it based on the ps_ra_filtered object:
+```{r}
+ps_hellinger <- transform_sample_counts(ps_ra_filtered, function(x){sqrt(x)})
+
+```
+
+
+First, **Jaccard**, which builds the distance matrix based on presence/absence between samples. It does not take into account relative abundance of the taxa. Therefore this functions well for determining differences driven by rare taxa, which are weighed the same as abundant taxa.
+```{r}
+jac_dmat<-vegdist(t(otu_table(ps_hellinger)),method="jaccard") # Jaccard dist metric
+pcoa_jac<-pcoa(jac_dmat) # perform PCoA
+
+# Extract variances from pcoa, from jaccard calculated dist. metric
+jac_variances <- data.frame(pcoa_jac$values$Relative_eig) %>% 
+  select(PercVar = 'pcoa_jac.values.Relative_eig') %>% 
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+head(jac_variances)
+
+# Make a screeplot
+ggplot(jac_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Jaccard PCoA Screeplot")
+```
+The first two axes (22.5 + 17.1 = 39.6%) pretty good. But I am going to experiment and plot the first 3 axes since the 2nd and 3rd explain a similar amount of variance, 17.1 and 11.3% respectively 
+
+Plot in 3D with Plotly
+```{r}
+# Extract variances from the jaccard pcoa
+pcoa_jac_df <- data.frame(pcoa_jac$vectors) %>% 
+  rownames_to_column(var = "#SampleID")
+
+# Merge metadata into the pcoa data table
+pcoa_jac_df <- left_join(pcoa_jac_df, metadata, by = "#SampleID")
+head(pcoa_jac_df)
+
+# Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
+eigenvalues<-round(jac_variances[,2], digits = 4)*100
+
+# Plotly - 3-D
+pcoa_jaccard <- plot_ly(pcoa_jac_df, type='scatter3d', mode='markers',
+        x=~Axis.2,y=~Axis.3,z=~Axis.1,colors=~brewer.pal(11,'Spectral'),
+        color=~Salinity, symbols = c('circle','diamond-open'), symbol=~Size_fraction)%>%
+  layout(font=list(size=12),
+         title='PCoA Jaccard Distance',
+         scene=list(xaxis=list(title=paste0('Co 2 ',eigenvalues[2],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    yaxis=list(title=paste0('Co 3 ',eigenvalues[3],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
+                               showticklabels=FALSE,zerolinecolor='black')))
+pcoa_jaccard
+
+withr::with_dir('Figures', htmlwidgets::saveWidget(as_widget(pcoa_jaccard), file="pcoa_jaccard.html"))
+```
+The Jaccard-PCoA is still driven by differences in salinity/temperature. Similar to the PCA and PhILR results, there are a couple of samples (green diamonds) that are clustering away from that pattern along PC1. 
+There is some slight separation of Total/Pfree pairs in most cases.
+
+
+
+Next, try a **Bray-Curtis** distance matrix with PCoA, which builds the distance matrix based on presence/absence between samples *and* relative abundance differences. This ordination will represent well the differences in samples that are driven by taxa with high relative abundances.
+```{r}
+bray_dmat<-vegdist(t(otu_table(ps_hellinger)),method="bray") # Bray-Curtis dist metric
+pcoa_bray<-pcoa(bray_dmat) # perform PCoA
+
+# Extract variances from pcoa, from jaccard calculated dist. metric
+bray_variances <- data.frame(pcoa_bray$values$Relative_eig) %>% 
+  select(PercVar = 'pcoa_bray.values.Relative_eig') %>% 
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+head(bray_variances)
+
+# Make a screeplot
+ggplot(bray_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Bray-Curtis PCoA Screeplot")
+```
+The first two axes (32.6 + 21.9 = 54.5%) are pretty good again but I am still going to experiment in the plot with the 3rd axis (12.6% variance)
+
+
+
+
+Plot in 3D with Plotly
+```{r}
+# Extract variances from the jaccard pcoa
+pcoa_bray_df <- data.frame(pcoa_bray$vectors) %>% 
+  rownames_to_column(var = "#SampleID")
+
+# Merge metadata into the pcoa data table
+pcoa_bray_df <- left_join(pcoa_bray_df, metadata, by = "#SampleID")
+head(pcoa_bray_df)
+
+# Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
+eigenvalues<-round(bray_variances[,2], digits = 4)*100
+
+# Plotly - 3-D
+pcoa_bray <- plot_ly(pcoa_bray_df, type='scatter3d', mode='markers',
+        x=~Axis.2,y=~Axis.3,z=~Axis.1,colors=~brewer.pal(11,'Spectral'),
+        color=~Salinity, symbols = c('circle','diamond-open'), symbol=~Size_fraction)%>%  
+  layout(font=list(size=12),
+         title='PCoA Bray-Curtis Distance',
+         scene=list(xaxis=list(title=paste0('Co 2 ',eigenvalues[2],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    yaxis=list(title=paste0('Co 3 ',eigenvalues[3],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
+                               showticklabels=FALSE,zerolinecolor='black')))
+pcoa_bray
+
+withr::with_dir('Figures', htmlwidgets::saveWidget(as_widget(pcoa_bray), file="pcoa_bray.html"))
+```
+
+These results are almost identical to those from the Jaccard, so the influence of abundant and rare taxa on differences among samples seems to be the same. This is maybe not surprising since I did filter out many of the very low abundant taxa in order to do the ordinations.
+
+
+Next try a **Weighted Unifrac** distance matrix with PCoA. Unifrac prioritizes differences in relatedness (of taxa) among sample. Using weighted unifrac means we are also taking into account changes in relative abundance between samples.
+
+This should be done with the phyloseq function, ordinate, which has a unifrac distance method. vegdist does not.
+
+```{r}
+out.wuf.log <- ordinate(ps_hellinger, method = "PCoA", distance = "wunifrac")
+evals <- out.wuf.log$values$Eigenvalues
+
+# Extract variances from pcoa, from jaccard calculated dist. metric
+wuf_variances <- data.frame(out.wuf.log$values$Relative_eig) %>% 
+  select(PercVar = 'out.wuf.log.values.Relative_eig') %>% 
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+head(wuf_variances)
+
+# Make a screeplot
+ggplot(wuf_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Weighted Unifrac PCoA Screeplot")
+
+```
+The first two axes (31.3 + 25.7 = 57%) explain a lot of variance so this can be plotted with the first 2 axes. There are negative eigenvalues towards the end of this screeplot. But since these eigenvalues are small relative to the primary axes, they can be ignored. 
+
+Visualize in 2D
+```{r}
+pcoa_wuf <- plot_ordination(ps_hellinger, out.wuf.log, shape="Size_fraction", color = "Salinity") +
+  geom_point(size = 4) +
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_hellinger)$Salinity), max(sample_data(ps_hellinger)$Salinity)), name = 'Salinity') + 
+  ggtitle('Weighted Unifrac PCoA Ordination') +
+  coord_fixed(ratio = 1) +
+  theme_bw()
+
+pcoa_wuf
+
+ggsave("figures/pcoa_wuf.eps",pcoa_wuf, width = 7, height = 5, units = c("in"))
+
+```
+There are very similar patterns here compared to the PCA and PhILR plots. I wonder if there is difference among Pfree/Total if we use an unweighted unifrac.
+
+
+
+
+Next try a **Unweighted Unifrac** distance matrix with PCoA. Unifrac prioritizes differences in relatedness (of taxa) among sample. Using unweighted unifrac means we are weighing all taxa the same, no matter their relative abundance.
+```{r}
+out.uf.log <- ordinate(ps_hellinger, method = "PCoA", distance = "unifrac")
+evals <- out.uf.log$values$Eigenvalues
+
+# Extract variances from pcoa, from jaccard calculated dist. metric
+uf_variances <- data.frame(out.uf.log$values$Relative_eig) %>% 
+  select(PercVar = 'out.uf.log.values.Relative_eig') %>% 
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+head(uf_variances)
+
+# Make a screeplot
+ggplot(uf_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Unweighted Unifrac PCoA Screeplot")
+
+```
+The first two axes (23.7 + 16.3 = 40%) explain most of variance on their own (3rd axis is only 7.7%). Still, the first two axes are lower than previous ordinations so interpret with caution. Plot in a 2D plot.
+
+Visualize in 2D
+```{r}
+pcoa_uf <- plot_ordination(ps_hellinger, out.uf.log, shape="Size_fraction", color = "Salinity") +
+  geom_point(size = 4) +
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_hellinger)$Salinity), max(sample_data(ps_hellinger)$Salinity)), name = 'Salinity') + 
+  ggtitle('Unweighted Unifrac PCoA Ordination') +
+  coord_fixed(ratio = 1) +
+  theme_bw()
+
+pcoa_uf
+
+ggsave("figures/pcoa_uf.eps",pcoa_uf, width = 7, height = 5, units = c("in"))
+```
+When you compare the unweighted to the weighted unifrac PCoA, there is some more distance between the Pfree vs Total samples in the UF, indicating that the differences between these samples is driven by taxa that are phylogenetically different, whether they are abundant or rare.
+
+
+
+### NMDS
+Lastly, try a non-metric dimensional scaling ordination. PCA/PCoA are metric and attempt to rotate axes to fit the distance matrix distribution. An NMDS represents the data in 2-axes, by constraining the distribution of the points. Similar to above, this can be combined with different pre-treatment of the data.
+
+First try the compositional approach, an **NMDS on CLR-tranformed data using the Euclidean distances** (aka Aitchison distance)
+
+```{r}
+euc_dmat<-dist(clr_asv_table_ps_filtered, method = "euclidean") # Build the Aitchison distance matrix
+euc_nmds <- metaMDS(euc_dmat, k=2, autotransform=FALSE) # Run the ordination
+euc_nmds$stress #Check the stress. Less than 0.1 is good. Less than 0.5 is better. This will be different each time, since it is iteratively finding a unique solution each time (although the should look similar)
+
+# Extract points from nmds and merge into data frame with metadata 
+euc_nmds_df <- data.frame(euc_nmds$points) %>% 
+  rownames_to_column(var = "#SampleID")
+
+# Merge metadata into the pcoa data table
+euc_nmds_df <- left_join(euc_nmds_df, metadata, by = "#SampleID")
+head(euc_nmds_df)
+
+
+
+## Plotting euclidean distance NMDS
+nmds_aitch <- ggplot(euc_nmds_df,aes(x = MDS1, y = MDS2, color = Salinity, shape = Size_fraction)) +
+  geom_point(size = 4) +
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_filtered)$Salinity), max(sample_data(ps_filtered)$Salinity)), name = 'Salinity') + 
+  theme_bw() +
+  labs(x = "NMDS 1", y = "NMDS 2", title = paste0('Aitchison Distance NMDS, Stress = ', round(euc_nmds$stress,2))) +
+  coord_fixed(ratio = 1)
+
+nmds_aitch
+
+ggsave("figures/nmds_aitch.eps",nmds_aitch, width = 7, height = 5, units = c("in"))
+```
+The above has a relatively high stress (>0.1) so should be interpreted with caution. There is some separation according to salinity. There are several 'Total' samples that separate from the rest that do not conform to the salinity pattern.
+
+
+
+Next try a **Jaccard NMDS**, which will represent differences in presence/absence among samples, emphasizing both abundant and rare taxa the same
+
+```{r}
+jac_nmds <- metaMDS(jac_dmat, k=2, autotransform=FALSE) # Run the ordination. Distance matrix was already calculated above
+jac_nmds$stress #Check the stress. Less than 0.1 is good. Less than 0.5 is better. This will be different each time, since it is iteratively finding a unique solution each time (although the should look similar)
+
+# Extract points from nmds and merge into data frame with metadata 
+jac_nmds_df <- data.frame(jac_nmds$points) %>% 
+  rownames_to_column(var = "#SampleID")
+
+# Merge metadata into the pcoa data table
+jac_nmds_df <- left_join(jac_nmds_df, metadata, by = "#SampleID")
+head(jac_nmds_df)
+
+
+
+## Plotting euclidean distance NMDS
+nmds_jaccard <- ggplot(jac_nmds_df,aes(x = MDS1, y = MDS2, color = Salinity, shape = Size_fraction)) +
+  geom_point(size = 4) +
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_hellinger)$Salinity), max(sample_data(ps_hellinger)$Salinity)), name = 'Salinity') + 
+  theme_bw() +
+  labs(x = "NMDS 1", y = "NMDS 2", title = paste0('Jaccard Distance NMDS, Stress = ', round(jac_nmds$stress,2))) +
+  coord_fixed(ratio = 1)
+
+nmds_jaccard
+
+ggsave("figures/nmds_jaccard.eps",nmds_jaccard, width = 7, height = 5, units = c("in"))
+```
+This is still a relatively high stress (>0.1) so should be interpreted with caution. The pattern along salinity gradient is similar here. There is some separation of Total/Pfree.
+
+
+Next try a **Bray-Curis NMDS**, which will represent differences in presence/absence among samples *and* relative abundance, thus emphasizing impacts of highly abundant taxa.
+
+```{r}
+bray_nmds <- metaMDS(bray_dmat, k=2, autotransform=FALSE) # Run the ordination. Distance matrix was already calculated above
+bray_nmds$stress #Check the stress. Less than 0.1 is good. Less than 0.5 is better. This will be different each time, since it is iteratively finding a unique solution each time (although the should look similar)
+
+# Extract points from nmds and merge into data frame with metadata 
+bray_nmds_df <- data.frame(bray_nmds$points) %>% 
+  rownames_to_column(var = "#SampleID")
+
+# Merge metadata into the pcoa data table
+bray_nmds_df <- left_join(bray_nmds_df, metadata, by = "#SampleID")
+head(bray_nmds_df)
+
+
+
+## Plotting euclidean distance NMDS
+nmds_bray <- ggplot(bray_nmds_df,aes(x = MDS1, y = MDS2, color = Salinity, shape = Size_fraction)) +
+  geom_point(size = 4) +
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_hellinger)$Salinity), max(sample_data(ps_hellinger)$Salinity)), name = 'Salinity') + 
+  theme_bw() +
+  labs(x = "NMDS 1", y = "NMDS 2", title = paste0('Bray-Curtis Distance NMDS, Stress = ', round(bray_nmds$stress,2))) +
+  coord_fixed(ratio = 1)
+
+nmds_bray
+
+ggsave("figures/nmds_bray.eps",nmds_bray, width = 7, height = 5, units = c("in"))
+```
+Very similar to Jaccard results. High-ish stress (0.14) The pattern along salinity gradient is same. There is some separation of Total/Pfree.
+
+
+
+Next try a **Unweighted Unifrac NMDS**, which will represent differences in phylogenetic relatedness of taxa among samples. This is not weighted by relative abundance, thus emphasizing impacts of both abundance and rare taxa.
+
+```{r}
+# Calculate the ordination using phyloseq function, ordinate (vegan does not have method Unifrac)
+out.nmds.uf.log <- ordinate(ps_hellinger, method = "NMDS", distance = "unifrac")
+evals <- out.nmds.uf.log$values$Eigenvalues
+
+nmds_uf_plot = plot_ordination(ps_hellinger, out.nmds.uf.log, shape="Size_fraction", color = "Salinity") +
+  geom_point(size = 4) +
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_hellinger)$Salinity), max(sample_data(ps_hellinger)$Salinity)), name = 'Salinity') + 
+  ggtitle(paste0('Unweighted Unifrac NMDS, Stress = ', round(out.nmds.uf.log$stress,2))) + 
+  coord_fixed(ratio = 1) +
+  theme_bw()
+
+nmds_uf_plot
+ggsave("figures/nmds_uf_plot.eps",nmds_uf_plot, width = 7, height = 5, units = c("in"))
+```
+Again, the stress here (0.17) is a bit too high to say anything confidently. There seems to be some pattern with salinity and some more dramatic separation of Total/Pfree.
+
+
+
+Next a **Weighted Unifrac NMDS**, which will represent differences in phylogenetic relatedness of taxa among samples and *is* weighted by relative abundance, thus emphasizing impacts of abundant 
+
+```{r}
+# Calculate the ordination using phyloseq function, ordinate (vegan does not have method Unifrac)
+out.nmds.wuf.log <- ordinate(ps_hellinger, method = "NMDS", distance = "wunifrac")
+evals <- out.nmds.wuf.log$values$Eigenvalues
+
+nmds_wuf_plot = plot_ordination(ps_hellinger, out.nmds.wuf.log, shape="Size_fraction", color = "Salinity") +
+  geom_point(size = 4) +
+  scale_color_distiller(palette = "Spectral", direction = 1, limits = c(min(sample_data(ps_hellinger)$Salinity), max(sample_data(ps_hellinger)$Salinity)), name = 'Salinity') + 
+  ggtitle(paste0('Weighted Unifrac NMDS, Stress = ', round(out.nmds.wuf.log$stress,2))) + 
+  coord_fixed(ratio = 1) +
+  theme_bw()
+
+nmds_wuf_plot
+ggsave("figures/nmds_wuf_plot.eps",nmds_wuf_plot, width = 7, height = 5, units = c("in"))
+```
+
+Again, the stress here (0.16) is too high to say anything confidently. There seems to be no/ weak pattern with salinity. The Total/Pfree points are closer together than in the unweighted unifrac, suggesting that differences in Pfree and Total were driven moreso by rare taxa.
+
+
+Overall, NMDS does not seem like a good approach. The stresses are too high. 
+
+#### Summary
+I think the compositional approaches (PCA and PhILR) tell an interesting story: Salinity and temperature have an effect on the composition of these samples. When you account for phylognetic relatedness (with PhILR), the most variance is explained in two axes (almost 60%). The PhILR compared to the PCA also demonstrates that the PA and FL samples are composed of phylogenetically distinct taxa.
+
+
+## Differential Abundances
+I am interested in pulling out which taxa define the different in PA and FL. 
+
+### PhILR
+The PhILR package has some interesting capabilities to do this using sparse logistic regressions.
+
+
+Load glmnet and fit sparse logistic regression model (Note, if deriving a variable based on another with more than 2 factors, you need some extra lines. See tutorial linked above for details)
+```{r}
+library(glmnet)
+
+glmmod <- glmnet(ps.philr, sample_data(ps)$Size_fraction, alpha=1, family="binomial")
+```
+
+Identify the balances that define Total vs. Pfree. Use the default parameters from the tutorial for now.
+```{r}
+top.coords <- as.matrix(coefficients(glmmod, s=0.2526))
+top.coords <- rownames(top.coords)[which(top.coords != 0)]
+(top.coords <- top.coords[2:length(top.coords)]) # remove the intercept as a coordinate
+```
+
+
+Visualize the balance values with respect to Total/ Pfree for each of these 3 balances
+```{r}
+ps.philr.long <- convert_to_long(ps.philr, get_variable(ps, 'Size_fraction')) %>%
+  filter(coord %in% top.coords)
+
+ggplot(ps.philr.long, aes(x=labels, y=value)) +
+  geom_boxplot(fill='lightgrey') +
+  facet_grid(.~coord, scales='free_x') +
+  xlab('Size fraction') + ylab('Balance Value') +
+  theme_bw()
+```
+
+
+There are 3 balances which represent the differences. Find out what those are:
+```{r}
+tc.names <- sapply(top.coords, function(x) name.balance(tree2, tax2, x))
+tc.names
+```
+These balance names represent the highest node on the tree, which can include many taxa below it (which is why, for example, n5 is comparing Bacteria and Bacteria- there are different taxa under each of these nodes).
+
+
+Check full taxonomy of each of the 3 balances- First n5:
+```{r}
+votesn5 <- name.balance(tree2, tax2, 'n5', return.votes = c('up', 'down'))
+votesn5[[c('up.votes', 'phylum')]] # Numerator at Class Level
+votesn5[[c('down.votes', 'phylum')]] # Denomenator
+
+```
+
+And visualize the position of the n5 node on a tree:
+
+```{r}
+library(ggtree)
+
+tc.nn <- name.to.nn(tree2, top.coords)
+tc.colors <- c('#a6cee3')
+p <- ggtree(tree2, layout='fan') +
+  geom_balance(node=tc.nn[1], fill=tc.colors[1], alpha=0.6) 
+p <- annotate_balance(tree2, 'n5', p=p, labels = c('n5+', 'n5-'),
+                 offset.text=0.15, bar=FALSE) 
+p
+```
+The above shows the split between the numerator of the balance (n5+: Cyanobacteria, Firmicutes, Fusobacteriota) and the denomenator (n5-: Acidobacteriota, Actinobacteriota, Armatimonadota, Bacteroidota, Chloroflexi, Cloacimonadota,       Crenarchaeota, Gemmatimonadota, Marinimicrobia (SAR406 clade), Nitrospinota, Nitrospirota, Patescibacteria,         Planctomycetota, SAR324 clade(Marine group B) and Verrucomicrobiota).
+
+I am not positive what is represented by the numerator and denomenator here (Total or Pfree), although I can guess that n5+ [numerator] is Total because a) that is the first factor that appears in ps$Size_fraction and b) there are less phyla (3 in n5+ vs. 15 in n5-) and it is a smaller chunk on the tree. I will check the relative abundance of some of these phyla, facet-wrapped by size fraction, to confirm which balances are in higher [relative] abundance in Total vs. Pfree:
+
+First make a function that plots pyloseq data as bars but doesn't include those black lines (from [here](https://stackoverflow.com/questions/48314292/removing-lines-from-barplot-in-r) )
+```{r}
+# 
+my_plot_bar = function (physeq, x = "Sample", y = "Abundance", fill = NULL, title = NULL, 
+                        facet_grid = NULL) {
+    mdf = psmelt(physeq)
+    p = ggplot(mdf, aes_string(x = x, y = y, fill = fill))
+    p = p + geom_bar(stat = "identity", position = "stack")
+    p = p + theme(axis.text.x = element_text(angle = -90, hjust = 0))
+    if (!is.null(facet_grid)) {
+        p <- p + facet_grid(facet_grid)
+    }
+    if (!is.null(title)) {
+        p <- p + ggtitle(title)
+    }
+    return(p)
+}
+```
+
+```{r}
+# Check cyanobacteria, which is in the numerator for balance n5
+ps_cyano_ra <- subset_taxa(ps_ra, phylum == "Cyanobacteria")
+
+ps_cyano_barplot <- my_plot_bar(ps_cyano_ra) + 
+  facet_wrap(~Size_fraction, scales = "free_x")
+
+ps_cyano_barplot
+
+```
+These seem more abundant in the Total size fraction, which would be consistent with numerator being the "Total" fraction.
+
+
+```{r}
+# Check Firmicutes, which is in the numerator for balance n5
+ps_firmi_ra <- subset_taxa(ps_ra, phylum == "Firmicutes")
+
+ps_firmi_barplot <- my_plot_bar(ps_firmi_ra) + 
+  facet_wrap(~Size_fraction, scales = "free_x")
+
+ps_firmi_barplot
+```
+Firmicutes reach higher abundances in Total size fraction, but on average I wouldn't necessarily say they are different between size fractions (but remember this plot is looking at relative abundance, not composition, like PhILR)
+
+
+```{r}
+# Check Fusobacteriota, which is in the numerator for balance n5
+ps_fuso_ra <- subset_taxa(ps_ra, phylum == "Fusobacteriota")
+
+ps_fuso_barplot <- my_plot_bar(ps_fuso_ra) + 
+  facet_wrap(~Size_fraction, scales = "free_x")
+
+ps_fuso_barplot
+```
+These also seem to be in higher abundance in the total, so I am beginning to decipher that the numerator of the balance is "Total" and the denomenator is "Pfree".
+
+
+Check some from the denomenator (which according to my logic should be in higher abundance in Pfree)
+```{r}
+# Check Bacteroidota, which is in the denomenator for balance n5
+ps_bacteroid_ra <- subset_taxa(ps_ra, phylum == "Bacteroidota")
+
+ps_bacteroid_barplot <- my_plot_bar(ps_bacteroid_ra) + 
+  facet_wrap(~Size_fraction, scales = "free_x")
+
+ps_bacteroid_barplot
+```
+These relative abundances seem similar in both size fractions, but perhaps a little higher on average in the Pfree
+
+
+
+```{r}
+# Check Verrucomicrobiota, which is in the denomenator for balance n5
+ps_verruco_ra <- subset_taxa(ps_ra, phylum == "Verrucomicrobiota")
+
+ps_verruco_barplot <- my_plot_bar(ps_verruco_ra) + 
+  facet_wrap(~Size_fraction, scales = "free_x")
+
+ps_verruco_barplot
+```
+These also seem similar in both size fractions, not necessarily higher in Pfree. Could be because these are relative abdundances and PhILR is assessing composition (the ILR transformed abudnance data). Check one group that has only very low rel abundance overall...
+
+
+```{r}
+# Check Nitrospinota, which is in the denomenator for balance n5 and has lower abundance overall, so might be more obvious
+ps_nitrospino_ra <- subset_taxa(ps_ra, phylum == "Nitrospinota")
+
+ps_nitrospino_barplot <- my_plot_bar(ps_nitrospino_ra) + 
+  facet_wrap(~Size_fraction, scales = "free_x")
+
+ps_nitrospino_barplot
+```
+This is definitely in higher relative abundance in the Total, not what I was expecting...
+*This makes me a bit suspicious. Some of these mismatches in interpretation of PhILR results and the relative abundances can be explained by differences in transformed (compositional) data and relative abundance. But here, this balance is barely present in the Pfree fraction. But it is in the denomenator of this balance comparison, so I am not confident about this method yet.*
+
+
+Check full taxonomy of n29
+```{r}
+votesn1114 <- name.balance(tree2, tax2, 'n29', return.votes = c('up', 'down'))
+votesn1114[[c('up.votes', 'order')]] # Numerator at order Level
+votesn1114[[c('down.votes', 'order')]] # Denomenator at order level
+
+```
+
+And visualize the position of the n29 node on a tree:
+
+```{r}
+tc.nn <- name.to.nn(tree2, top.coords)
+tc.colors <- c('#a6cee3')
+p <- ggtree(tree2, layout='fan') +
+  geom_balance(node=tc.nn[2], fill=tc.colors[1], alpha=0.6) 
+p <- annotate_balance(tree2, 'n29', p=p, labels = c('n29+', 'n29-'),
+                 offset.text=0.15, bar=FALSE) 
+p
+```
+This region is a very small part of the tree, within the Gammaproteobacteria. Hard to decipher from the full tree.
+
+
+
+Check the relative abundance of some of the identified groups from balance n29 in Total vs. Pfree.
+First CCM19a, which is in the numerator:
+```{r}
+ps_CCM19a_ra <- subset_taxa(ps_ra, order == "CCM19a")
+
+ps_CCM19a_barplot <- my_plot_bar(ps_CCM19a_ra) + 
+  facet_wrap(~Size_fraction, scales = "free_x")
+
+ps_CCM19a_barplot
+
+```
+Definitely in higher abundance in Total and is present in numerator (n29+)
+
+Check something from the denomenator, CCD24
+```{r}
+ps_CCD24_ra <- subset_taxa(ps_ra, order == "CCD24")
+
+ps_CCD24_barplot <- my_plot_bar(ps_CCD24_ra) + 
+  facet_wrap(~Size_fraction, scales = "free_x")
+
+ps_CCD24_barplot
+```
+So while the abundance of CCD24 is higher in Pfree than CCM19a is, CCD24 is still in higher relative abundance in Total than Pfree. I think there might be a relative abudnance bias against finding the Pfree- favored groups, that is being oversome by the PhILR method, which is why I keep seeing this. Try one more from the denomenator,EPR3968-O8a-Bc78
+
+```{r}
+ps_EPR3968_ra <- subset_taxa(ps_ra, order == "EPR3968-O8a-Bc78")
+
+ps_EPR3968_barplot <- my_plot_bar(ps_EPR3968_ra) + 
+  facet_wrap(~Size_fraction, scales = "free_x")
+
+ps_EPR3968_barplot
+
+```
+Here, the relative abundance definitely seems higher in Pfree, which is consistent with this group being in the denomenator.
+
+
+
+
+### ALDEx2
+ALDEx2 is a compositional approach to differential abundance that is similar to ANOVA. It models the probability of observing a count as a log-ratio transformed probability distribution rather than as direct counts, therefore correcting for differences in sequencing depth and being insensitive to the removal of ASVs from a sample.
+
+```{r}
+library(ALDEx2)
+```
+
+The ALDEx t-test can be run in one step but is doing a lot of things. Here's a quick summary from Nicholas Olberding's [website](https://www.nicholas-ollberding.com/post/introduction-to-the-statistical-analysis-of-microbiome-data-in-r/):
+
+- Generate a large number (here n=128) of posterior probabilities for the observance of each taxon (i.e. output many data.frames where the counts have been converted to proportions). This is done by Monte-Carlo sampling from a Dirichlet distribution with a small non-zero prior to deal with zeros. The total read count therefore only contributes to the precision of the proportions.
+- Apply the centered log-ratio transformation to each instance.
+- Apply the Wilcoxon test to each taxon for each simulated instance.
+- Estimate the effect size as the difference between conditions divided by the maximum difference within conditions averaging over all instances. Scaling the between group difference by the maximum within group difference gives us a standardized effect size measure.
+- Obtain the expected p-values for each taxon by averaging over all instances.
+- Apply the BH-FDR correction to control the false positive rate.
+```{r}
+aldex2_ps <- ALDEx2::aldex(data.frame(phyloseq::otu_table(ps)), phyloseq::sample_data(ps)$Size_fraction, test="t", effect = TRUE, denom="iqlr")
+```
+
+
+Plot effect size
+```{r}
+#Plot effect sizes
+ALDEx2::aldex.plot(aldex2_ps, type="MW", test="wilcox", called.cex = 1, cutoff = 0.05)
+
+```
+Differentially abundant taxa are those where the difference exceeds dispersion. Points in the top are more abundant in the Total samples and towards the bottom are more abudnance in the Pfree samples. Highlighted in red are taxa with BH-FDR corrected p-values. 
+
+However, the authors of ANDEx2 recommend using effect size rather than p-values:
+```{r}
+# Modify taxonomy table
+ps_taxonomy <- tax_table(ps) %>%
+            as("matrix") %>%
+            tibble::as_tibble(rownames = "ASV")
+
+#Clean up presentation of table
+sig_aldex2 <- aldex2_ps %>%
+  rownames_to_column(var = "ASV") %>%
+  filter(wi.eBH < 0.05) %>%
+  arrange(effect, wi.eBH) %>%
+  dplyr::select(ASV, diff.btw, diff.win, effect, wi.ep, wi.eBH)
+
+# Match ALDEx table to taxonmy table and view
+sig_aldex2 <- left_join(sig_aldex2, ps_taxonomy, by = "ASV")
+sig_aldex2
+```
+Table is arranged by diff.btw and effect. diff.btw is the median difference in clr between the Total and Pfree groups. Effect is the the diff.btw/ max(diff.win) for all instances. According to the authors, effect size is the key metric here: it is robust for a variety of distributions and tells us which ASVs are reproducibly different between groups. It is also 
+
+The taxa with negative effect values are those with higher abundance in Pfree and those with positive effect values are those in higher abundance in Total (based on plot above). There is some inconsistency here with the PhILR results-
+
+Negative values (Pfree): Several ASVs from Bacteroidota, several from Gammaproteobacteria (Burkholderiales), 2 SAR11 clades, 1 Actinobacteria.
+Positive values (Total): *there are many but here is a brief summary* Several different Alpha and Gammaproteobacteria, including the EPR3968-O8a-Bc78 and Steroidobacterales ASVs that came up before, several Chloroplast ASVs, several Desulfobacterota, several Bacteroidota, several Chloroflexi, several Nitrospirota, several Verrucomicrobiota, and more...
+
+While the chloroplasts seem to be consistenly in the Total size fraction for both the PhILR and ANDEx2 approaches (which makes sense, since these are eukaryotic), other groups like Nitrospirota, Verrucomicrobiota, Gammaproteobacteria etc. are in the Total group by ALDEx method but in the Pfree according to the PhILR method. I think the ALDEx2 method is more widely accepted for differential abundance analysis of microbiome data. Still, I should check at least one more approach to be confident...
+
+#### Save and re-load dataset again
+Above step takes a bit (20-30 mins) so save variables again up to this point incase 
+
+Since that step takes a long time, save all variables up to this point in environmnet as RData object
+```{r}
+# save.image("HREmicrobiome_analysis_vars_upto_aldex2.RData")
+```
+
+If variables are lost, come back and load everything up to now:
+```{r}
+# load("/Volumes/MyPassport/HREMicrobiomeproject2019_LargeFiles/dada2_decipher_analysis_files/post_analysis_R/HREmicrobiome_analysis_vars_upto_aldex2.RData")
+```
+*Note on the above: Copied the Rdata object into my external storage. Load it from there.*
+
+### ANCOM
+
+Following Mandal et al. 2015 and Kaul et al. 2017. ANCOM is an Aitchison log-ratio approach to differential abundance. ANCOM-II is the same approach as ANCOM, with a pre-processing step that corrects for excessive zeroes (which most microbiome data have). Here I am following the tutorial from [here](https://github.com/FrederickHuangLin/ANCOM), specifically the `moving_pics.R tutorial` in the `scripts` directory.
+
+Clone the ANCOM repository (in terminal)
+```{bash}
+git clone https://github.com/FrederickHuangLin/ANCOM.git
+```
+
+```{r}
+library(exactRankTests)
+library(nlme)
+source("ANCOM/scripts/ancom_v2.1.R")
+```
+
+
+Read in data and do some pre-processing for correct format. Based on Kaul et al. 2017, the types of zeroes we would have in this dataset should be considered *structural* zeroes.
+```{r}
+feature_table <- as.data.frame(otu_table(ps)) # absolute abundance table; taxa as rows
+meta_data <- as.data.frame(sample_data(ps)) # meta data table
+colnames(meta_data)[1] <- "Sample.ID" # simplfy column name of sample IDs from meta_data
+sample_var = "Sample.ID"; # indicate this name in a variable
+group_var = NULL # required for detecting structural zeroes and outliers.
+out_cut = 0.05; # observations with proportion of mixture distribution less than out_cut will be detected as outlier zeros
+zero_cut = 0.90; # Taxa with proportion of zeroes greater than zero_cut are not included in the analysis
+lib_cut = 1000; # Samples with library size less than lib_cut are not included in the analysis
+neg_lb = TRUE; # TRUE indicates a taxon would be classified as a structural zero in the corresponding experimental group using its asymptotic lower bound. More specifically, neg_lb = TRUE indicates you are using both criteria stated in section 3.2 of ANCOM-II to detect structural zeros
+```
+
+Pre-processing- to detect structural zeroes
+```{r}
+prepro = feature_table_pre_process(feature_table, meta_data, sample_var, group_var, 
+                                   out_cut, zero_cut, lib_cut, neg_lb)
+
+feature_table = prepro$feature_table # Preprocessed feature table
+meta_data = prepro$meta_data # Preprocessed metadata
+struc_zero = prepro$structure_zeros # Structural zero info
+```
+
+ANCOM step- takes a while so comment out for now
+```{r}
+# main_var = "Size_fraction"; 
+# p_adj_method = "BH"; # default method is Benjamini-Hochberg procedure
+# alpha = 0.05 # significance cutoff
+# adj_formula = NULL; rand_formula = NULL
+# t_start = Sys.time()
+# res = ANCOM(feature_table, meta_data, struc_zero, main_var, p_adj_method, 
+#             alpha, adj_formula, rand_formula)
+# t_end = Sys.time()
+# t_run = t_end - t_start # around 30s
+# 
+# write_csv(res$out, "ancom_results.csv")
+
+t_run
+```
+
+#### Save and re-load dataset again
+Above step took >24 hours so save variables again up to this point incase 
+
+Since that step takes a long time, save all variables up to this point in environmnet as RData object
+```{r}
+save.image("HREmicrobiome_analysis_vars_upto_ancom.RData")
+```
+
+If variables are lost, come back and load everything up to now:
+```{r}
+# load("/Volumes/MyPassport/HREMicrobiomeproject2019_LargeFiles/dada2_decipher_analysis_files/post_analysis_R/HREmicrobiome_analysis_vars_upto_ancom.RData")
+```
+*Note on the above: Copied the Rdata object into my external storage. Load it from there.*
+
+Plot- FIGURE THIS OUT
+```{r}
+# Step 3: Volcano Plot
+
+# Number of taxa except structural zeros
+n_taxa = ifelse(is.null(struc_zero), nrow(feature_table), sum(apply(struc_zero, 1, sum) == 0))
+# Cutoff values for declaring differentially abundant taxa
+cut_off = c(0.9 * (n_taxa -1), 0.8 * (n_taxa -1), 0.7 * (n_taxa -1), 0.6 * (n_taxa -1))
+names(cut_off) = c("detected_0.9", "detected_0.8", "detected_0.7", "detected_0.6")
+
+# Annotation data
+dat_ann = data.frame(x = min(res$fig$data$x), y = cut_off["detected_0.9"], label = "W[0.9]")
+
+fig = res$fig +  
+  geom_hline(yintercept = cut_off["detected_0.9"], linetype = "dashed") + 
+  geom_text(data = dat_ann, aes(x = x, y = y, label = label), 
+            size = 4, vjust = -0.5, hjust = 0, color = "orange", parse = TRUE)
+fig  
+#ggsave("images/moving_pics.jpeg", height=5, width=6.25, units='in', dpi = 300)  
+```
+
+
+
+#### STOPPED HERE
+- Try definine "core" microbiome for HRE  or for Total/ PA. Example: https://microbiome.github.io/tutorials/Core.html
+- Consider presentation like this: http://albertsenlab.org/ampvis2-heatmap/ , especially their last figure (amp_heatmap) which could be used to identify categories (FL/PA, H/L tide, season, etc) by taxonomic rank (genus?)
+- Predictions & ML: https://www.nicholas-ollberding.com/post/introduction-to-the-statistical-analysis-of-microbiome-data-in-r/
+  - Ask if rain/ tide can be used to predict which ASVs are present (alternatively define which are present in particles)
