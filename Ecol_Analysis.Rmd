@@ -54,7 +54,7 @@ Import count table and taxonomy file. I slightly modified otutable.csv in Excel 
 ```{r}
 # Import Count table. Skip first row of tsv file, which is just some text
 count_table <- read_table2("results/otutable_mod.csv")
-
+colnames(count_table)[1] <- "SampleID"
 
 # Import taxonomy of ASVs
 taxonomy <- read_csv(file="results/tax_sequences_blast_taxonomy.csv")
@@ -73,90 +73,17 @@ taxonomy
 ```
 
 
-### Rarefaction curves
-
-```{r}
-# Use rarecurve, from the Vegan package. Rarcurve expects the dataset as a dataframe so we need to use as.data.frame again:
-count_table_df <- as.data.frame(t(count_table))
-colnames(count_table_df) <- count_table_df[1,]
-count_table_df <- count_table_df[-c(1),]
-rownames(count_table_df) <- NULL
-
-# Plot the rarefaction curves, color-coding by the colors listed in sample_info_tab, which indicate sample type, and transforming using t() again
-# Running this 5-10 samples at a time because otherwise it takes a long time to render
-
-rarecurve(as.numeric(count_table_df[,]), step=100, cex=0.5, ylab="ASVs", label=T)
-##STOPPED HERE TUES NIGHT. ALSO CHECK ON RERUN OF BLAST STEP IN OTHER NOTEBOOK
-```
-
-Many of these seem to be sequenced to completion but for the low ASV abundance ones, it's unclear.
-
-### Remove singletons
-
-```{r}
-count_table_no_singletons <- filter(count_table,rowSums(count_table)>1)
-# retains all 2439 ASVs
-```
-
-
-
-### Make Phylo Tree  
-This process takes a LONG time (>24 HOURS) so run once and save .RData object
-In the Dada2 tools, there are no options to build a tree (unlike in Qiime2) but we can build it here using DECIPHER and phangorn
-
-(Based on [https://f1000research.com/articles/5-1492/v2](https://f1000research.com/articles/5-1492/v2))
-
-
-Make an alignment using tools from Decipher (Note- alignment step takes several hours. Commented out for now. Only need to run once)
-```{r}
-## import fasta
-fas <- "dada2_results/ASVs.fa"
-seqs <- readDNAStringSet(fas)
-seqs
-
-# perform the alignment
-aligned <- AlignSeqs(seqs) # automatically detects and uses all cores
-
-# view the alignment in a browser (optional)
-BrowseSeqs(aligned, highlight=0)
-
-# write out aligned sequence file
-writeXStringSet(aligned, file="ASVs.aligned.fasta")
-```
-
-
-Since previous step took awhile to generate, save current variables in environment as RData object
-```{r}
-save.image("backups/upto_alignment.RData")
-```
-
-
-Use phangorn package to build tree. Here we are building a maximum likelihood neighbor-joining tree. (Also takes a while to run. Comment out unless running)
-
-```{r}
-# phang.align <- phyDat(as(aligned, "matrix"), type="DNA") # convert to phyDat format
-# dm <- dist.ml(phang.align) # calculate pairwise distance matrix
-# treeNJ <- NJ(dm) # perform neighbor-joining tree method
-# fit = pml(treeNJ, data=phang.align) # compute intermal max likelihood
-```
-
-### Save and re-load dataset
-Since that step takes a long time, save all variables up to this point in environmnet as RData object
-```{r}
-save.image("backups/upto_tree.RData")
-```
-
 
 
 ### Make phyloseq object
 
-Here we will do ordinations using the phyloseq package, which first requires making phyloseq objects out of each of our input data tables (in the last tutorial, I imported the tree using phyloseq so it is already a phyloseq object)
+I want to use the phyloseq package for some plotting/ statistics, which first requires making phyloseq objects out of each of  input data tables- 
+##KEEP WORKING HERE
 
 ```{r}
-ASV	=	otu_table(data.frame(count_table_no_singletons), taxa_are_rows =  TRUE)
+ASV	=	otu_table(tbl_df(count_table), taxa_are_rows =  FALSE)
 TAX	=	tax_table(as.matrix(taxonomy))
 META	=	sample_data(data.frame(metadata, row.names = metadata$`seq_ID`))
-TREE = phy_tree(fit$tree)
 ```
 
 
@@ -196,6 +123,16 @@ table(tax_table(ps)[, "domain"], exclude = NULL)
 
 ```
 
+### Rarefaction curves
+
+
+### Remove singletons
+
+```{r}
+count_table_no_singletons <- filter(count_table,rowSums(count_table)>1)
+# retains all 2439 ASVs
+```
+
 
 Filter out those ambigious Domain annotations
 ```{r}
@@ -217,6 +154,7 @@ ps <- subset_taxa(ps, !is.na(phylum) & !phylum %in% c(""))
 table(tax_table(ps)[, "phylum"], exclude = NULL)
 ```
 After the above, 1685 ASVs remain
+
 
 
 ### Re-root tree 
