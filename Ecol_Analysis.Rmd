@@ -90,7 +90,7 @@ metadata
 I want to use the phyloseq package for some plotting/ statistics, which first requires making phyloseq objects out of each of  input data tables- 
 
 ```{r}
-count_table_matrix <- as.matrix(count_table[,2:55]) # convert count table to matrix, leaving out character column of sample ID
+count_table_matrix <- as.matrix(count_table[,2:392]) # convert count table to matrix, leaving out character column of sample ID
 rownames(count_table_matrix) <- count_table$SampleID # add back in Sample IDs as row names
 ASV	=	otu_table(count_table_matrix, taxa_are_rows =  FALSE)
 
@@ -129,7 +129,7 @@ ps <- phyloseq(ASV,	TAX,	META)
 ```{r}
 rarecurve(otu_table(ps), step=50, cex=0.5)
 ```
-Most samples look like they were sampled to completion. Be weary of T5S7, T4S5, T1S2, T3S2 and maybe T3S3
+Most samples look like they were sampled to completion. Be weary of T3S11, T1S2, and maybe T4S5
 
 
 ### Filtering
@@ -139,191 +139,88 @@ Check some features of the phyloseq object
 rank_names(ps)
 
 unique(tax_table(ps)[, "superkingdom"])
-```
-All are in Eukaryota domain, that's good. Also check and all are in phylum Chordata and class Actinopteri
 
-
-Check orders
-```{r}
-rank_names(ps)
+unique(tax_table(ps)[, "phylum"])
 
 unique(tax_table(ps)[, "class"])
 
-table(tax_table(ps)[, "class"], exclude = NULL)
 
 ```
 
+There are some ASVs with `NA` as superkingdom, phylum, or class annotation- delete these. 
+```{r}
+ps <- subset_taxa(ps, !is.na(superkingdom) & !is.na(phylum) & !is.na(class))
+
+unique(tax_table(ps)[, "superkingdom"])
+
+unique(tax_table(ps)[, "phylum"])
+
+unique(tax_table(ps)[, "class"])
+
+nrow(tax_table(ps)) # number of ASVs left
+```
+378 ASVs still remain...
 
 
-### Remove singletons
+Also check class Mammalia, to see if contamination or real:
+```{r}
+tax_table(subset_taxa(ps, class == 'Mammalia'))
+```
+These are human, wild boar, cat (ahem...cat lady), and cattle. All are contamination so delete all Mammalia
 
 ```{r}
-count_table_no_singletons <- filter(count_table,rowSums(count_table)>1)
-# retains all 2439 ASVs
+ps <- subset_taxa(ps, !class == 'Mammalia')
+unique(tax_table(ps)[, "class"])
 ```
 
 
-Filter out those ambigious Domain annotations
-```{r}
-ps <- subset_taxa(ps, !is.na(domain) & !domain %in% c("", "Eukaryota"))
 
-table(tax_table(ps)[, "domain"], exclude = NULL)
-```
+### Plot total sequences by phyla to check out sequencing effort
 
-Check out the phyla names
-```{r}
-table(tax_table(ps)[, "phylum"], exclude = NULL)
-```
-
-
-Filter out any with "NA" as phylum. For now, I am leaving in phyla with low abundance 
-```{r}
-ps <- subset_taxa(ps, !is.na(phylum) & !phylum %in% c(""))
-
-table(tax_table(ps)[, "phylum"], exclude = NULL)
-```
-After the above, 1685 ASVs remain
-
-
-
-### Re-root tree 
-Have to do this because you may have removed the root of your tree when pruning). 
-(I found this handy function from [here](https://john-quensen.com/r/unifrac-and-tree-roots/) which picks the longest branch to root from). 
+Check overall how the phyla are distributed among samples
 
 ```{r}
-# first define function from link above to find furthest outgroup
-pick_new_outgroup <- function(tree.unrooted){
-require("magrittr")
-require("data.table")
-require("ape") # ape::Ntip
-# tablify parts of tree that we need.
-treeDT <- 
-     cbind(
-         data.table(tree.unrooted$edge),
-         data.table(length = tree.unrooted$edge.length)
-     )[1:Ntip(tree.unrooted)] %>% 
- cbind(data.table(id = tree.unrooted$tip.label))
- # Take the longest terminal branch as outgroup
- new.outgroup <- treeDT[which.max(length)]$id
- return(new.outgroup) }
+# First aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
+superkingdomGlommed = tax_glom(ps, "superkingdom")
 
-# then run on my phyloseq tree
-my.tree <- phy_tree(ps)
-out.group <- pick_new_outgroup(my.tree)
-out.group
-
-# Then use this outgroup to root the tree
-new.tree1 <- ape::root(my.tree, outgroup=out.group, resolve.root=TRUE)
-
-
-phy_tree(ps) <- new.tree1
-
-# Check if tree is binary (dichotomous not multichotomous)
-is.binary.tree(phy_tree(ps))
-
-# If false, would have to run
-# new.tree2 <- ape::multi2di(new.tree1)
-# phy_tree(ps) <- new.tree2
-# phy_tree(ps)
-
-
+# and plot
+plot_bar(superkingdomGlommed, x = "Sample")
 ```
+Total sequences reveals certain samples had very low sequencing effort: T1S7, T1S8, T3S11, and, not as bad, T1S2 and T4S5
+
+The rarefaction analysis also showed these same samples were likely not sequenced to completion. Therefore remove these 5 samples from analysis
+```{r}
+ps <- subset_samples(ps, !SampleID == "T1S7" & !SampleID == "T1S8" & !SampleID == "T3S11" & !SampleID == "T1S2" & !SampleID == "T4S5")
+
+ps
+```
+
+50 samples remaining
+
+
 
 
 ## Abundance plots
 
-
-### All phyla
-
-Check overall how the phyla are distributed among samples. Phyloseq makes this easy
-
-```{r}
-# First aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
-phylumGlommed = tax_glom(ps, "phylum")
-
-# There are many phyla here, so have to make a custom color palette by interpolating from an existing one in RColorBrewer
-colourCount = length(table(tax_table(ps)[, "phylum"], exclude = NULL))
-getPalette = colorRampPalette(brewer.pal(11, "Spectral"))
-PhylaPalette = getPalette(colourCount)
-
-# and plot
-plot_bar(phylumGlommed, x = "Sample", fill = "phylum") + 
-  scale_fill_manual(values = PhylaPalette)
-```
-
-Plot compositional (relative abundances) instead of absolute abundance using microbiome::transform
+For plotting, use *relative abundances*, calculated easily using microbiome::transform
 
 ```{r}
 ps_ra <- microbiome::transform(ps, transform = "compositional")
-head(otu_table(ps_ra))
 ```
 
+
+Then aglomerate the ASVs at the family level using the phyloseq function, tax_glom
 ```{r}
-# Then aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
-phylumGlommed_RA = tax_glom(ps_ra, "phylum")
-# and plot
-phyla_barplot <- plot_bar(phylumGlommed_RA, x = "Sample", fill = "phylum") + 
-  scale_fill_manual(values = PhylaPalette) +
-  theme(legend.text = element_text(size = 10)) +
-  facet_wrap(~host_animal)
-  
-
-phyla_barplot
-
-# export
-ggsave("Figures/phyla_barplot.eps",phyla_barplot, width = 15, height = 5, units = c("in"))
-```
-The HSC samples seem to have more Verrucomicrobiota and less Firmicutes than the oyster samples. Otherwise they look kind of similar across the two animal types 
-
-Check abundance plots for some phyla of interest
-
-
-### The Proteobacteria
-```{r}
-# subset to proteobacteria
-ps_proteo_ra <- subset_taxa(ps_ra, phylum == "Proteobacteria")
-
-# define colors
-colourCount = length(table(tax_table(ps_proteo_ra)[, "order"], exclude = NULL))
-getPalette = colorRampPalette(brewer.pal(11, "Spectral"))
-OrderPalette = getPalette(colourCount)
-
-# Then aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
-orderGlommed_RA = tax_glom(ps_proteo_ra, "order")
-# and plot
-proteobac_orders_barplot <- plot_bar(orderGlommed_RA, fill = "order") + 
-  scale_fill_manual(values = OrderPalette) +
-  facet_wrap(~host_animal)
-
-proteobac_orders_barplot
-
-# export
-ggsave("figures/proteobac_orders_barplot.eps",proteobac_orders_barplot, width = 15, height = 5, units = c("in"))
+familyGlommed_RA = tax_glom(ps_ra, "family")
+family_barplot <- plot_bar(familyGlommed_RA, x = "Sample", fill = "family")
+family_barplot
 
 ```
+*NOTES* for Sara
+- the positive controls seem to be all the same family- I assume this is OK and from this point on we can just remove them
+- there are some suspicious samples, (T1S3, T1S6, T2S11, T3S10, T3S4, T3S5, T3S9, T4S4, T4S7, T5S7 which are composed almost exclusively of 1 family. This might be fine, but I'm not used to seeing this with proakroytic data. Just to make you aware
 
 
-### The Actinobacteriota 
-```{r}
-# subset 
-ps_actino_ra <- subset_taxa(ps_ra, phylum == "Actinobacteriota")
-
-# define colors
-colourCount = length(table(tax_table(ps_actino_ra)[, "order"], exclude = NULL))
-getPalette = colorRampPalette(brewer.pal(11, "Spectral"))
-OrderPalette = getPalette(colourCount)
-
-# Then aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
-actino_orderGlommed_RA = tax_glom(ps_actino_ra, "order")
-# and plot
-actino_orders_barplot <- plot_bar(actino_orderGlommed_RA, fill = "order") + 
-  scale_fill_manual(values = OrderPalette) +
-  facet_wrap(~host_animal)
-
-actino_orders_barplot
-
-ggsave("figures/actino_orders_barplot.eps",actino_orders_barplot, width = 15, height = 5, units = c("in"))
-```
 
 
 
