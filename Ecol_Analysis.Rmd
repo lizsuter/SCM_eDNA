@@ -202,13 +202,13 @@ ps
 
 ## Abundance plots
 
-For plotting, use *relative abundances*, calculated easily using microbiome::transform
+For plotting, use *relative abundances* (# of ASV sequences/sum total sequences in sample), calculated easily using microbiome::transform
 
 ```{r}
 ps_ra <- microbiome::transform(ps, transform = "compositional")
 ```
 
-
+### Plt abundance of families from all samples to do some quality control
 Then aglomerate the ASVs at the family level using the phyloseq function, tax_glom
 ```{r}
 familyGlommed_RA = tax_glom(ps_ra, "family")
@@ -217,115 +217,94 @@ family_barplot
 
 ```
 *NOTES* for Sara
-- the positive controls seem to be all the same family- I assume this is OK and from this point on we can just remove them
-- there are some suspicious samples, (T1S3, T1S6, T2S11, T3S10, T3S4, T3S5, T3S9, T4S4, T4S7, T5S7 which are composed almost exclusively of 1 family. This might be fine, but I'm not used to seeing this with proakroytic data. Just to make you aware
+- the positive controls seem to be all the same family- I assume this is expected and from this point on we can just remove them
+- There are some samples, (T1S3, T1S6, T2S11, T3S10, T3S4, T3S5, T3S9, T4S4, T4S7, T5S7) which are composed almost exclusively of 1 family. This might be fine, but I'm not used to seeing this with prokaroytic data. Just want to check with you
 
 
 
 
+Glom by species to see if I get the same 38 unique species Sara sees:
+
+```{r}
+speciesGlommed_RA = tax_glom(ps_ra, "species")
+speciesGlommed_RA
+tax_table(speciesGlommed_RA)
+
+```
+
+I am actually getting 43 unique species. Close but not exact. *Check with Sara*
+
+### Bubble plots
+Plot species using bubble plots to differentiate patterns across sample types
+Partly based on [this](https://towardsdatascience.com/how-to-give-life-to-your-microbiome-data-using-plotly-r-1892281183cf) and 
+```{r}
+# convert ps object to dataframe using phyloseq's psmelt
+df_ra <- psmelt(ps_ra)
+
+# convert to factor
+df_ra$Bayside = as.factor(df_ra$Bayside)
 
 
+ax <- list(
+#  title = "Bay Side",
+  zeroline = FALSE,
+  showline = FALSE,
+  showticklabels = FALSE,
+  showgrid = FALSE
+)
+
+# sort highest to lowest abundance
+speciesbubbleplot <- df_ra %>% 
+  mutate(species=fct_reorder(species, Abundance, .fun='mean', .desc=F)) %>% 
+  split(.$Bayside) %>% 
+  lapply(function(d) {
+    plot_ly(d, 
+            x = ~Station, 
+            y = ~species, 
+            text = ~Abundance, 
+            type = 'scatter', 
+            mode = 'markers',
+            size = ~Abundance, 
+            color = ~Station, 
+            colors = "Dark2",
+            #Choosing the range of the bubbles' sizes:
+            sizes = c(3, 35),
+            marker = list(opacity = 1, sizemode = 'diameter')) %>% 
+      layout(xaxis = ax,
+             yaxis = list(showgrid = FALSE))}) %>%
+  subplot(nrows = 1, shareX = T, shareY =T, titleX = T, titleY = T, margin = 0.01) %>% 
+  layout(legend=list(title=list(text='East')))
 
 
+# # remove unwanted legends from plot 
+# for (i in seq(3, length(speciesbubbleplot[["x"]][["data"]]))) {
+#   speciesbubbleplot[["x"]][["data"]][[i]][["showlegend"]] <- FALSE
+#   }
 
+speciesbubbleplot
+```
+The above is not correct. There are only 20 someting species and many of them are zeroes...
+
+
+Alternatively try heatmap (based on https://joey711.github.io/phyloseq/plot_heatmap-examples.html)
+```{r}
+y <- plot_heatmap(speciesGlommed_RA, sample.label="Station", taxa.label = "species")
+y
+y$data
+# I think that y$data exports the underlying matrix of data that goes into the heatmap- try to play with this 
+```
+
+--> *CONTINUE HERE* TRY EXPORTING THE HEAT MAP DATA TO CONVERT TO BUBBLE PLOT IN GGPLOT/ PSMELT
 
 ## Ordinations 
+*COME BACK HERE* I have some questions below about the determinant not being zero, etc
 
-
-### First, more filtering
-Need to constrain the size of the count tables more, otherwise the matrix algebra during ordinations overwhelems R.
-
-McMurdie and Holmes (2013) filter out taxa that were not seen with more than 3 counts in at least 20% of the samples. We also want to add a pseduocount of 1 to all counts. This is so that later when we do different calculations (log, division, etc) we don't get back errors due to zeroes
-```{r}
-ps_filtered = filter_taxa(ps, function(x) sum(x > 3) > (0.2*length(x)), TRUE) 
-ps_filtered <- transform_sample_counts(ps_filtered, function(x) x+1)
-
-# Also make a filtered version of the relative abundance count table (for plotting purposes)
-ps_ra_filtered <- prune_taxa(taxa_names(ps_filtered),ps_ra) # prune from ps_ra object (relative abundances)
-
-# check number of ASVs in each
-ps
-ps_filtered
-ps_ra_filtered
-
-```
-That reduced the otu table from 1685 ASVs to 97- note this is definitely not statistically representative. Just peak at some data for now.
-
-
-Check remaining phyla
-```{r}
-table(tax_table(ps_filtered)[, "phylum"], exclude = NULL)
-```
-
-
-
-Check by plotting phyla again
-```{r}
-# There are many phyla here, so have to make a custom color palette by interpolating from an existing one in RColorBrewer
-colourCount = length(table(tax_table(ps_ra_filtered)[, "phylum"], exclude = NULL))
-getPalette = colorRampPalette(brewer.pal(11, "Spectral"))
-PhylaFilteredPalette = getPalette(colourCount)
-
-phylum_filtered_Glommed_RA = tax_glom(ps_ra_filtered, "phylum")
-# and plot
-phyla_barplot_filtered <- plot_bar(phylum_filtered_Glommed_RA, x = "Sample", fill = "phylum") + 
-  scale_fill_manual(values = PhylaFilteredPalette) +
-  theme(legend.text = element_text(size = 10)) +
-  facet_wrap(~host_animal)
-
-phyla_barplot_filtered
-
-# export
-ggsave("figures/phyla_barplot_filtered.eps",phyla_barplot_filtered, width = 15, height = 5, units = c("in"))
-
-```
-
-
-
-Lastly, reroot-the tree affiliated with the ps_filtered and ps_ra_filtered dataset, since the root may have been removed when filtering
-
-```{r}
-# first define function from link above to find furthest outgroup
-pick_new_outgroup <- function(tree.unrooted){
-require("magrittr")
-require("data.table")
-require("ape") # ape::Ntip
-# tablify parts of tree that we need.
-treeDT <- 
-     cbind(
-         data.table(tree.unrooted$edge),
-         data.table(length = tree.unrooted$edge.length)
-     )[1:Ntip(tree.unrooted)] %>% 
- cbind(data.table(id = tree.unrooted$tip.label))
- # Take the longest terminal branch as outgroup
- new.outgroup <- treeDT[which.max(length)]$id
- return(new.outgroup) }
-
-# then run on my phyloseq tree
-my.tree <- phy_tree(ps_filtered)
-out.group <- pick_new_outgroup(my.tree)
-out.group
-
-# Then use this outgroup to root the tree
-new.tree1 <- ape::root(my.tree, outgroup=out.group, resolve.root=TRUE)
-
-
-phy_tree(ps_filtered) <- new.tree1
-phy_tree(ps_ra_filtered) <- new.tree1
-
-# Check if tree is binary (not multichotomous)
-is.binary.tree(phy_tree(ps_filtered))
-
-```
-
-
-Now move onto ordinations using this filtered dataset
 
 ### Test for compositionality
 based on Coenen et al. tutorials for clustering. See [repo](https://github.com/WeitzGroup/analyzing_microbiome_timeseries)
 ```{r}
 # Estimate covariance matrix for OTUs
-covariance_matrix <- as.matrix(otu_table(ps_filtered)) %*% t(otu_table(ps_filtered))
+covariance_matrix <- as.matrix(otu_table(ps_ra)) %*% t(otu_table(ps_ra))
 # %*% = matrix multiplication sign in R; used here to multiply OTU/ASV data matrix to itself to estimate covariance.
 
 # Evaluate determinant of covariance matrix
@@ -342,18 +321,18 @@ PCA is essentially a type of PCoA  using the Euclidean distance matrix as input.
 First do a **CLR, centered log ratio** transformation of the absolute abundance data (after filtering), as suggested by [Gloor et al. 2017](https://www.frontiersin.org/articles/10.3389/fmicb.2017.02224/full) and check the determinant of this matrix. Compare it to the determinant without any transformation.
 {Also commented out for now because takes a few minutes}
 ```{r}
-# Estimate covariance matrix for absolute abundance ASV table
-covariance_matrix <- as.matrix(otu_table(ps_filtered)) %*% t(otu_table(ps_filtered))
+# Estimate covariance matrix from absolute abundance ASV table
+covariance_matrix <- as.matrix(otu_table(ps)) %*% t(otu_table(ps))
 # %*% = matrix multiplication sign in R; used here to multiply OTU/ASV data matrix to itself to estimate covariance.
 
 # Evaluate determinant of covariance matrix
 cov_determinant <- det(covariance_matrix)
 
 # Estimate covariance matrix for CLR-transformed ASV table
-clr_asv_table_ps_filtered <- data.frame(compositions::clr(t(otu_table(ps_filtered))))
+clr_asv_table_ps <- data.frame(compositions::clr(t(otu_table(ps))))
 
 ## Check new determinant of clr transformed table
-new_covdet <- det(as.matrix(clr_asv_table_ps_filtered) %*% t(clr_asv_table_ps_filtered))
+new_covdet <- det(as.matrix(clr_asv_table_ps) %*% t(clr_asv_table_ps))
 
 # Compare
 cov_determinant #Original Count Data
