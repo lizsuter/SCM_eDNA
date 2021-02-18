@@ -60,16 +60,26 @@ colnames(count_table)[1] <- "SampleID"
 taxonomy <- read_csv(file="results/tax_sequences_blast_taxonomy.csv")
 # remove first col of sequential numbers
 taxonomy[,1] <- NULL
+# filter out sequences with low PID (recommended by Sara)
+taxonomy <- filter(taxonomy, PID > 92)
+
+# remove BLAST metadata and just retain taxonomy (necessary for further processing below)
+drop.cols <- c(colnames(taxonomy)[2:9],'RefSeq_Tax_ID_1')
+taxonomy <-  select(taxonomy, -one_of(drop.cols))
+
+
 # # And specify that the first column of data are rownames
 # taxonomy <- column_to_rownames(taxonomy, var = colnames(taxonomy$ASV_ID))
 
 ```
-
+Filtering removed seqs 110, 332 (Gobiosoma ginsburgi and Belone belone)
+*Note for Sara* should we consider setting this at 97% which is more robust and still leaves 334 unique ASVs (rather than 379 with the 92% cutoff in the settings above)
 
 Preview datasets
 ```{r}
 count_table
 taxonomy
+metadata
 ```
 
 
@@ -78,12 +88,17 @@ taxonomy
 ### Make phyloseq object
 
 I want to use the phyloseq package for some plotting/ statistics, which first requires making phyloseq objects out of each of  input data tables- 
-##KEEP WORKING HERE
 
 ```{r}
-ASV	=	otu_table(tbl_df(count_table), taxa_are_rows =  FALSE)
-TAX	=	tax_table(as.matrix(taxonomy))
-META	=	sample_data(data.frame(metadata, row.names = metadata$`seq_ID`))
+count_table_matrix <- as.matrix(count_table[,2:55]) # convert count table to matrix, leaving out character column of sample ID
+rownames(count_table_matrix) <- count_table$SampleID # add back in Sample IDs as row names
+ASV	=	otu_table(count_table_matrix, taxa_are_rows =  FALSE)
+
+taxonomy_matrix <- as.matrix(taxonomy[,2:8])
+rownames(taxonomy_matrix) <- taxonomy$ASV_ID 
+TAX	=	tax_table(taxonomy_matrix)
+
+META	=	sample_data(data.frame(metadata, row.names = metadata$`SampleID`))
 ```
 
 
@@ -91,9 +106,7 @@ First check that the inputs are in compatible formats by checking for ASV names 
 ```{r}
 head(taxa_names(TAX))
 head(taxa_names(ASV))
-head(taxa_names(TREE))
 ```
-
 
 And check sample names were also detected
 ```{r}
@@ -108,22 +121,38 @@ head(sample_names(META))
 
 And make the phyloseq object
 ```{r}
-ps <- phyloseq(ASV,	TAX,	META , TREE)
+ps <- phyloseq(ASV,	TAX,	META)
 ```
 
+### Rarefaction curves
 
+```{r}
+rarecurve(otu_table(ps), step=50, cex=0.5)
+```
+Most samples look like they were sampled to completion. Be weary of T5S7, T4S5, T1S2, T3S2 and maybe T3S3
+
+
+### Filtering
 
 Check some features of the phyloseq object
 ```{r}
 rank_names(ps)
 
-unique(tax_table(ps)[, "domain"])
+unique(tax_table(ps)[, "superkingdom"])
+```
+All are in Eukaryota domain, that's good. Also check and all are in phylum Chordata and class Actinopteri
 
-table(tax_table(ps)[, "domain"], exclude = NULL)
+
+Check orders
+```{r}
+rank_names(ps)
+
+unique(tax_table(ps)[, "class"])
+
+table(tax_table(ps)[, "class"], exclude = NULL)
 
 ```
 
-### Rarefaction curves
 
 
 ### Remove singletons

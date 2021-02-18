@@ -423,6 +423,18 @@ blastResults <- unite(blastResults, Ref_Seq_title, X9, X10, X11, X12, X13, X14, 
 colnames(blastResults) <- c("ASV_ID", "ref_seq_ID", "PID", "alnmt_len", "mismatch", "eval", "bscore", "RefSeq_Tax_ID", "Ref_Seq_title")
 blastResults
 ```
+*NOTE* in the above, 
+
+- Seqs 234, 367, 370, 371, 374, 375, 381, 382, 387, 388 are not listed because there was no significant similarity found to anything in blast
+- Seq 343 appears in list multiple times even though there was only one entry in fasta file. Not sure if this was bug in the `bastn` program where it reported more than one top hit. But I checked these and most are duplicates which can basically be ignored. There is one with the same hit but lower PID, delete this one too. They are all contamination (Felis_catus!) anyway!
+
+Clean up blastResults table:
+```{r}
+blastResults <-  unique(blastResults)
+rowtoremove <- filter(blastResults, ASV_ID == 'Seq_343' & PID <= 99.9)
+blastResults <- anti_join(blastResults,rowtoremove)
+blastResults
+```
 
 
 and grab accesion numbers
