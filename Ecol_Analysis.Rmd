@@ -139,12 +139,8 @@ Check some features of the phyloseq object
 rank_names(ps)
 
 unique(tax_table(ps)[, "superkingdom"])
-
 unique(tax_table(ps)[, "phylum"])
-
 unique(tax_table(ps)[, "class"])
-
-
 ```
 
 There are some ASVs with `NA` as superkingdom, phylum, or class annotation- delete these. 
@@ -152,11 +148,8 @@ There are some ASVs with `NA` as superkingdom, phylum, or class annotation- dele
 ps <- subset_taxa(ps, !is.na(superkingdom) & !is.na(phylum) & !is.na(class))
 
 unique(tax_table(ps)[, "superkingdom"])
-
 unique(tax_table(ps)[, "phylum"])
-
 unique(tax_table(ps)[, "class"])
-
 nrow(tax_table(ps)) # number of ASVs left
 ```
 378 ASVs still remain...
@@ -166,7 +159,7 @@ Also check class Mammalia, to see if contamination or real:
 ```{r}
 tax_table(subset_taxa(ps, class == 'Mammalia'))
 ```
-These are human, wild boar, cat (ahem...cat lady), and cattle. All are contamination so delete all Mammalia
+These are human, wild boar, cat (...cat lady), and cattle. All are contamination so delete all Mammalia
 
 ```{r}
 ps <- subset_taxa(ps, !class == 'Mammalia')
@@ -216,14 +209,22 @@ family_barplot <- plot_bar(familyGlommed_RA, x = "Sample", fill = "family")
 family_barplot
 
 ```
-*NOTES* for Sara
-- the positive controls seem to be all the same family- I assume this is expected and from this point on we can just remove them
+**NOTES** for Sara
+
+- the positive controls seem to be all the same family. I assume this is expected and from this point on we can just remove them
 - There are some samples, (T1S3, T1S6, T2S11, T3S10, T3S4, T3S5, T3S9, T4S4, T4S7, T5S7) which are composed almost exclusively of 1 family. This might be fine, but I'm not used to seeing this with prokaroytic data. Just want to check with you
 
 
+Remove Pos Controls
+```{r}
+ps_ra <- subset_samples(ps_ra, !SampleID == "T1PosCon" & !SampleID == "T2PosCon" & !SampleID == "T3PosCon")
+ps_ra
+```
+47 samples remain
 
 
-Glom by species to see if I get the same 38 unique species Sara sees:
+
+Agglomerate by species to see if I get the same 38 unique species Sara sees:
 
 ```{r}
 speciesGlommed_RA = tax_glom(ps_ra, "species")
@@ -232,69 +233,52 @@ tax_table(speciesGlommed_RA)
 
 ```
 
-I am actually getting 43 unique species. Close but not exact. *Check with Sara*
+I am actually getting 43 unique species. Close but not exact. **Check with Sara** if there are some more that should be removed
+
 
 ### Bubble plots
-Plot species using bubble plots to differentiate patterns across sample types
-Partly based on [this](https://towardsdatascience.com/how-to-give-life-to-your-microbiome-data-using-plotly-r-1892281183cf) and 
+
+Based on my previous [scripts](https://github.com/lizsuter/Cariaco_Euk) with Cariaco Eukaryotic data
 ```{r}
 # convert ps object to dataframe using phyloseq's psmelt
-df_ra <- psmelt(ps_ra)
+species_df <- psmelt(speciesGlommed_RA)
 
-# convert to factor
-df_ra$Bayside = as.factor(df_ra$Bayside)
+# replace zeroes in the table with NA
+species_df[species_df == 0] <- NA
 
+# and remove rows with NAs in abundance  (this is so they don't appear as small dots in plot)
+species_df <-  filter(species_df, !is.na(Abundance))
+```
 
-ax <- list(
-#  title = "Bay Side",
-  zeroline = FALSE,
-  showline = FALSE,
-  showticklabels = FALSE,
-  showgrid = FALSE
-)
-
-# sort highest to lowest abundance
-speciesbubbleplot <- df_ra %>% 
-  mutate(species=fct_reorder(species, Abundance, .fun='mean', .desc=F)) %>% 
-  split(.$Bayside) %>% 
-  lapply(function(d) {
-    plot_ly(d, 
-            x = ~Station, 
-            y = ~species, 
-            text = ~Abundance, 
-            type = 'scatter', 
-            mode = 'markers',
-            size = ~Abundance, 
-            color = ~Station, 
-            colors = "Dark2",
-            #Choosing the range of the bubbles' sizes:
-            sizes = c(3, 35),
-            marker = list(opacity = 1, sizemode = 'diameter')) %>% 
-      layout(xaxis = ax,
-             yaxis = list(showgrid = FALSE))}) %>%
-  subplot(nrows = 1, shareX = T, shareY =T, titleX = T, titleY = T, margin = 0.01) %>% 
-  layout(legend=list(title=list(text='East')))
-
-
-# # remove unwanted legends from plot 
-# for (i in seq(3, length(speciesbubbleplot[["x"]][["data"]]))) {
-#   speciesbubbleplot[["x"]][["data"]][[i]][["showlegend"]] <- FALSE
-#   }
+```{r}
+speciesbubbleplot <- ggplot(species_df, aes(x = Station, y = fct_rev(species), color = Station)) + # the fancy stuff around y (species) helps to present it in reverse order in the plot (from top to btm alphabetically)
+  geom_point(aes(size = Abundance))+
+  scale_size_area(breaks = c(0,.25,.5,.75,1), max_size = 6)+
+  xlab("")+
+  ylab("")+
+  labs(size="Relative Abundance")+
+  theme_bw() +
+  scale_color_brewer(palette="Paired") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  facet_grid(Datecode~Bayside, scales = "free", space = "free", drop= TRUE)
 
 speciesbubbleplot
 ```
-The above is not correct. There are only 20 someting species and many of them are zeroes...
 
 
-Alternatively try heatmap (based on https://joey711.github.io/phyloseq/plot_heatmap-examples.html)
+I like the layout above so I will export 
+
 ```{r}
-y <- plot_heatmap(speciesGlommed_RA, sample.label="Station", taxa.label = "species")
-y
-y$data
-# I think that y$data exports the underlying matrix of data that goes into the heatmap- try to play with this 
+ggsave(filename = "Figures/speciesbubbleplot.eps", plot = speciesbubbleplot, units = c("in"), width = 9, height = 14, dpi = 300, )
 ```
 
---> *CONTINUE HERE* TRY EXPORTING THE HEAT MAP DATA TO CONVERT TO BUBBLE PLOT IN GGPLOT/ PSMELT
+**NOTES** the above figure could probably use some more cleanup (like filtering out low abundance species). Can decide later
+
+
+
+--> **SARA IGNORE EVEYTHING BELOW HERE** I am still working on it
 
 ## Ordinations 
 *COME BACK HERE* I have some questions below about the determinant not being zero, etc
