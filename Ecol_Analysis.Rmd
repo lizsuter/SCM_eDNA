@@ -201,7 +201,22 @@ For plotting, use *relative abundances* (# of ASV sequences/sum total sequences 
 ps_ra <- microbiome::transform(ps, transform = "compositional")
 ```
 
-### Plt abundance of families from all samples to do some quality control
+Export the relative abundance matrix so Sara can have it:
+```{r}
+# Extract abundance matrix from the phyloseq object
+RelAbun_matrix = as(otu_table(ps_ra), "matrix")
+
+# Coerce to data.frame
+RelAbun_dataframe = as.data.frame(RelAbun_matrix)
+
+# Export
+write.csv(RelAbun_dataframe,"results/otutable_relabun.csv", row.names = TRUE)
+
+```
+
+
+
+### Plot abundance of families from all samples to do some quality control
 Then aglomerate the ASVs at the family level using the phyloseq function, tax_glom
 ```{r}
 familyGlommed_RA = tax_glom(ps_ra, "family")
@@ -233,7 +248,9 @@ tax_table(speciesGlommed_RA)
 
 ```
 
-I am actually getting 43 unique species. Close but not exact. **Check with Sara** if there are some more that should be removed
+**NOTES** for Sara
+
+I am actually getting 43 unique species- which ones am I missing that should be removed?
 
 
 ### Bubble plots
@@ -252,13 +269,14 @@ species_df <-  filter(species_df, !is.na(Abundance))
 
 ```{r}
 speciesbubbleplot <- ggplot(species_df, aes(x = Station, y = fct_rev(species), color = Station)) + # the fancy stuff around y (species) helps to present it in reverse order in the plot (from top to btm alphabetically)
-  geom_point(aes(size = Abundance))+
+  geom_point(aes(size = Abundance, fill = Station), color = "black", pch = 21)+
+  scale_size(range = c(1,15)) +
   scale_size_area(breaks = c(0,.25,.5,.75,1), max_size = 6)+
   xlab("")+
   ylab("")+
   labs(size="Relative Abundance")+
   theme_bw() +
-  scale_color_brewer(palette="Paired") +
+  scale_fill_brewer(palette="Paired") +
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) +
@@ -271,7 +289,7 @@ speciesbubbleplot
 I like the layout above so I will export 
 
 ```{r}
-ggsave(filename = "Figures/speciesbubbleplot.eps", plot = speciesbubbleplot, units = c("in"), width = 9, height = 14, dpi = 300, )
+ggsave(filename = "Figures/speciesbubbleplot.eps", plot = speciesbubbleplot, units = c("in"), width = 7, height = 12, dpi = 300, )
 ```
 
 **NOTES** the above figure could probably use some more cleanup (like filtering out low abundance species). Can decide later
