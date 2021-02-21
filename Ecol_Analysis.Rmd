@@ -49,7 +49,7 @@ metadata <- read_csv("sample_data.csv")
 ```
 
 
-#### DADA2 results:
+#### Import DADA2 results:
 Import count table and taxonomy file. I slightly modified otutable.csv in Excel to otutable_mod.csv to remove the quotes around seq names and put NA placehoder as first col name (which was above row names)
 ```{r}
 # Import Count table. Skip first row of tsv file, which is just some text
@@ -172,6 +172,16 @@ ps <- subset_taxa(ps, !class == 'Mammalia')
 unique(tax_table(ps)[, "class"])
 ```
 
+Next check the "Insecta" entries
+```{r}
+tax_table(subset_taxa(ps, class == 'Insecta'))
+```
+
+The onlly Insecta is Linepithema humile, which are ants so delete these too..
+```{r}
+ps <- subset_taxa(ps, !class == 'Insecta')
+unique(tax_table(ps)[, "class"])
+```
 
 
 ### Plot total sequences by phyla to check out sequencing effort
@@ -190,14 +200,25 @@ ggsave(filename = "Figures/seqdepth.eps", plot = plot_bar(superkingdomGlommed, x
 ```
 Total sequences reveals certain samples had very low sequencing effort: T1S7, T1S8, T3S11, and, not as bad, T1S2 and T4S5
 
-The rarefaction analysis also showed these same samples were likely not sequenced to completion. Therefore remove these 5 samples from analysis
+
+
+The rarefaction analysis also showed T1S2 and T4S5 samples were likely not sequenced to completion. Therefore remove these 5 samples from analysis
 ```{r}
 ps <- subset_samples(ps, !SampleID == "T1S7" & !SampleID == "T1S8" & !SampleID == "T3S11" & !SampleID == "T1S2" & !SampleID == "T4S5")
 
 ps
 ```
 
-50 samples remaining
+50 samples remaining with 368 ASVs
+
+
+And lastly, correct some taxonomy: According to Sara, Engraulis encrasicolus (European anchovy) should be Anchoa mitchilli (Bay anchovy):
+
+```{r}
+tax_table(ps) <- gsub(tax_table(ps), pattern = "Engraulis encrasicolus", replacement = "Anchoa mitchilli")  
+
+```
+
 
 
 
@@ -301,7 +322,7 @@ I like the layout above so I will export
 ggsave(filename = "Figures/speciesbubbleplot.eps", plot = speciesbubbleplot, units = c("in"), width = 7, height = 12, dpi = 300, )
 ```
 
-**NOTES** the above figure could probably use some more cleanup (like filtering out low abundance species). Can decide later
+**NOTES** next Sara wants the average rel abundances for each species across all dates
 
 
 
@@ -310,6 +331,7 @@ ggsave(filename = "Figures/speciesbubbleplot.eps", plot = speciesbubbleplot, uni
 ## Ordinations 
 *COME BACK HERE* I have some questions below about the determinant not being zero, etc
 
+- Lacoursière‐Roussel et al. use PCoA and PERMANOVA after Hellinger transformations
 
 ### Test for compositionality
 based on Coenen et al. tutorials for clustering. See [repo](https://github.com/WeitzGroup/analyzing_microbiome_timeseries)
