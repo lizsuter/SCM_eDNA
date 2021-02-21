@@ -128,6 +128,12 @@ ps <- phyloseq(ASV,	TAX,	META)
 
 ```{r}
 rarecurve(otu_table(ps), step=50, cex=0.5)
+
+# save as .eps
+setEPS()
+postscript("Figures/rarefaction.eps")
+rarecurve(otu_table(ps), step=50, cex=0.5)
+dev.off()
 ```
 Most samples look like they were sampled to completion. Be weary of T3S11, T1S2, and maybe T4S5
 
@@ -178,6 +184,9 @@ superkingdomGlommed = tax_glom(ps, "superkingdom")
 
 # and plot
 plot_bar(superkingdomGlommed, x = "Sample")
+
+ggsave(filename = "Figures/seqdepth.eps", plot = plot_bar(superkingdomGlommed, x = "Sample"), units = c("in"), width = 9, height = 6, dpi = 300, )# and save
+
 ```
 Total sequences reveals certain samples had very low sequencing effort: T1S7, T1S8, T3S11, and, not as bad, T1S2 and T4S5
 
