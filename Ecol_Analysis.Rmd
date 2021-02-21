@@ -280,7 +280,7 @@ tax_table(speciesGlommed_RA)
 
 **NOTES** for Sara
 
-I am actually getting 43 unique species- which ones am I missing that should be removed?
+I am actually getting 42 unique species- which ones am I missing that should be removed?
 
 
 ### Bubble plots
@@ -321,6 +321,8 @@ I like the layout above so I will export
 ```{r}
 ggsave(filename = "Figures/speciesbubbleplot.eps", plot = speciesbubbleplot, units = c("in"), width = 7, height = 12, dpi = 300, )
 ```
+
+--> CONTINUE HERE
 
 **NOTES** next Sara wants the average rel abundances for each species across all dates
 
