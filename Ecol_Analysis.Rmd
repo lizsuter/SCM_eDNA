@@ -17,6 +17,7 @@ editor_options:
 
 ```{r}
 library(tidyverse)
+library(readxl)
 library(phyloseq)
 library(dada2)
 library(Biostrings)
@@ -38,12 +39,9 @@ library(htmlwidgets)
 library(withr)
 ```
 
-## Prepare the data
+##  Import and prepare the data from eDNA 
 
-### Import 
-
-#### Metadata:
-#### come back and upload correct metadata file
+#### Import Metadata
 ```{r}
 metadata <- read_csv("sample_data.csv")
 ```
@@ -68,8 +66,12 @@ drop.cols <- c(colnames(taxonomy)[2:9],'RefSeq_Tax_ID_1')
 taxonomy <-  select(taxonomy, -one_of(drop.cols))
 
 
-# # And specify that the first column of data are rownames
-# taxonomy <- column_to_rownames(taxonomy, var = colnames(taxonomy$ASV_ID))
+# And import the Common names, as curated by Sara. Join to taxonomy
+commonnames <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",7)
+commonnames
+
+taxonomy <- left_join(taxonomy, commonnames, by = "ASV_ID")
+taxonomy
 
 ```
 Filtering removed seqs 110, 332 (Gobiosoma ginsburgi and Belone belone)
@@ -85,16 +87,16 @@ metadata
 
 
 
-### Make phyloseq object
+#### Make phyloseq object
 
-I want to use the phyloseq package for some plotting/ statistics, which first requires making phyloseq objects out of each of  input data tables- 
+I want to use the phyloseq package for some plotting/ statistics, which first requires making phyloseq objects out of each of input data tables- 
 
 ```{r}
 count_table_matrix <- as.matrix(count_table[,2:392]) # convert count table to matrix, leaving out character column of sample ID
 rownames(count_table_matrix) <- count_table$SampleID # add back in Sample IDs as row names
 ASV	=	otu_table(count_table_matrix, taxa_are_rows =  FALSE)
 
-taxonomy_matrix <- as.matrix(taxonomy[,2:8])
+taxonomy_matrix <- as.matrix(taxonomy[,2:9])
 rownames(taxonomy_matrix) <- taxonomy$ASV_ID 
 TAX	=	tax_table(taxonomy_matrix)
 
@@ -124,6 +126,10 @@ And make the phyloseq object
 ps <- phyloseq(ASV,	TAX,	META)
 ```
 
+
+
+## Quality check and filtering- eDNA
+
 ### Rarefaction curves
 
 ```{r}
@@ -150,6 +156,7 @@ unique(tax_table(ps)[, "class"])
 ```
 
 There are some ASVs with `NA` as superkingdom, phylum, or class annotation- delete these. 
+
 ```{r}
 ps <- subset_taxa(ps, !is.na(superkingdom) & !is.na(phylum) & !is.na(class))
 
@@ -231,7 +238,7 @@ tax_table(ps) <- gsub(tax_table(ps), pattern = "Engraulis encrasicolus", replace
 
 
 
-## Abundance plots
+## Abundance plots- eDNA
 
 For plotting, use *relative abundances* (# of ASV sequences/sum total sequences in sample), calculated easily using microbiome::transform
 
@@ -271,7 +278,7 @@ family_barplot
 Agglomerate by species to see if I get the same 38 unique species Sara sees:
 
 ```{r}
-speciesGlommed_RA = tax_glom(ps_ra, "species")
+speciesGlommed_RA = tax_glom(ps_ra, "CommonName")
 speciesGlommed_RA
 tax_table(speciesGlommed_RA)
 
@@ -279,7 +286,8 @@ tax_table(speciesGlommed_RA)
 
 **NOTES** for Sara
 
-I am actually getting 42 unique species- which ones am I missing that should be removed?
+- I am actually getting 43 unique species- which ones am I missing that should be removed?
+- Also there are two species you are calling Bay anchovy- Engraulis mordax and Anchoa mitchilli. Should the Engraulis mordax be changed to Anchoa mitchilli, similar to Engraulis encrasicolus ?
 
 
 ### Bubble plots
@@ -296,8 +304,11 @@ species_df[species_df == 0] <- NA
 species_df <-  filter(species_df, !is.na(Abundance))
 ```
 
+
+
+Plot by species, scientific name
 ```{r}
-speciesbubbleplot <- ggplot(species_df, aes(x = Station, y = fct_rev(species), color = Station)) + # the fancy stuff around y (species) helps to present it in reverse order in the plot (from top to btm alphabetically)
+speciesbubbleplot_eDNA_sciname <- ggplot(species_df, aes(x = Station, y = fct_rev(species), color = Station)) + # the fancy stuff around y (species) helps to present it in reverse order in the plot (from top to btm alphabetically)
   geom_point(aes(size = Abundance, fill = Station), color = "black", pch = 21)+
   scale_size(range = c(1,15)) +
   scale_size_area(breaks = c(0,.25,.5,.75,1), max_size = 6)+
@@ -311,22 +322,108 @@ speciesbubbleplot <- ggplot(species_df, aes(x = Station, y = fct_rev(species), c
         axis.ticks.x=element_blank()) +
   facet_grid(Datecode~Bayside, scales = "free", space = "free", drop= TRUE)
 
-speciesbubbleplot
+speciesbubbleplot_eDNA_sciname
 ```
 
 
-I like the layout above so I will export 
+
+Plot by species common name
 
 ```{r}
-ggsave(filename = "Figures/speciesbubbleplot.eps", plot = speciesbubbleplot, units = c("in"), width = 7, height = 12, dpi = 300, )
+speciesbubbleplot_eDNA_comname <- ggplot(species_df, aes(x = Station, y = fct_rev(CommonName), color = Station)) + # the fancy stuff around y (CommonName) helps to present it in reverse order in the plot (from top to btm alphabetically)
+  geom_point(aes(size = Abundance, fill = Station), color = "black", pch = 21)+
+  scale_size(range = c(1,15)) +
+  scale_size_area(breaks = c(0,.25,.5,.75,1), max_size = 6)+
+  xlab("")+
+  ylab("")+
+  labs(size="Relative Abundance")+
+  theme_bw() +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  facet_grid(Datecode~Bayside, scales = "free", space = "free", drop= TRUE)
+
+speciesbubbleplot_eDNA_comname
+```
+
+
+Exportfigures
+```{r}
+ggsave(filename = "Figures/speciesbubbleplot_eDNA_sciname.eps", plot = speciesbubbleplot_eDNA_sciname, units = c("in"), width = 7, height = 12, dpi = 300)
+
+ggsave(filename = "Figures/speciesbubbleplot_eDNA_comname.eps", plot = speciesbubbleplot_eDNA_comname, units = c("in"), width = 7, height = 12, dpi = 300)
+```
+
+**NOTE** on above. The common name plot has two entries in the Bay anchovy row because, as mentioned above, there are two different species name that are labelled as Bay Anchovy. Is it OK to group these as same species (Anchoa mitchilli)
+
+**NEXT** next Sara wants the average rel abundances for each species across all dates
+
+
+
+
+##  Import and prepare the data from trawls 
+
+### Import Trawl Master sheet
+
+```{r}
+# import 4th sheet from  Excel file which contains morphometric data for each individual collected for every date
+trawl_master <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",4)
+trawl_master
+
+# and import 6th sheet which is station info
+stations <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",6)
+stations
+
+```
+
+### Convert to count table
+Make an equivalent to an OTU table, grouping by date and location and representing counts for every unique species
+
+```{r}
+trawl_counts <- trawl_master %>%
+  group_by(DATECODE, STATION_NO, CommonName) %>%
+  tally(name = "count")
+
+trawl_counts
+```
+
+and link station names instead of numbers to count table
+```{r}
+trawl_counts <- left_join(trawl_counts, stations, by = "STATION_NO")
+trawl_counts
 ```
 
 
 
-**NOTES** next Sara wants the average rel abundances for each species across all dates
+## Abundance plots- Trawls
+
+```{r}
+speciesbubbleplot_trawl_comname <- ggplot(trawl_counts, aes(x = STATION_NA, y = fct_rev(CommonName), color = STATION_NA)) + 
+  geom_point(aes(size = log10(count), fill = STATION_NA), color = "black", pch = 21)+
+  scale_size(range = c(1,15)) +
+  scale_size_area(breaks = c(.01,.1, .3, .5, 1, 3), max_size = 6)+
+  xlab("")+
+  ylab("")+
+  labs(size="Log(counts)", fill = "Station")+
+  theme_bw() +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  facet_grid(DATECODE~BAYSIDE, scales = "free", space = "free", drop= TRUE)
+
+speciesbubbleplot_trawl_comname
+```
 
 
+Export figure
+```{r}
+ggsave(filename = "Figures/speciesbubbleplot_trawl_comname.eps", plot = speciesbubbleplot_trawl_comname, units = c("in"), width = 6.75, height = 15, dpi = 300)
+```
 
+
+# CONTINUE HERE
 
 ## Ordinations 
 
@@ -633,394 +730,3 @@ Very similar to Jaccard results. High-ish stress (0.15)
 XXX
 
 
-## Differential Abundances
-I am interested in pulling out which taxa define the different in PA and FL. 
-
-### PhILR
-The PhILR package has some interesting capabilities to do this using sparse logistic regressions.
-
-
-Load glmnet and fit sparse logistic regression model (Note, if deriving a variable based on another with more than 2 factors, you need some extra lines. See tutorial linked above for details)
-```{r}
-library(glmnet)
-
-glmmod <- glmnet(ps.philr, sample_data(ps)$Size_fraction, alpha=1, family="binomial")
-```
-
-Identify the balances that define Total vs. Pfree. Use the default parameters from the tutorial for now.
-```{r}
-top.coords <- as.matrix(coefficients(glmmod, s=0.2526))
-top.coords <- rownames(top.coords)[which(top.coords != 0)]
-(top.coords <- top.coords[2:length(top.coords)]) # remove the intercept as a coordinate
-```
-
-
-Visualize the balance values with respect to Total/ Pfree for each of these 3 balances
-```{r}
-ps.philr.long <- convert_to_long(ps.philr, get_variable(ps, 'Size_fraction')) %>%
-  filter(coord %in% top.coords)
-
-ggplot(ps.philr.long, aes(x=labels, y=value)) +
-  geom_boxplot(fill='lightgrey') +
-  facet_grid(.~coord, scales='free_x') +
-  xlab('Size fraction') + ylab('Balance Value') +
-  theme_bw()
-```
-
-
-There are 3 balances which represent the differences. Find out what those are:
-```{r}
-tc.names <- sapply(top.coords, function(x) name.balance(tree2, tax2, x))
-tc.names
-```
-These balance names represent the highest node on the tree, which can include many taxa below it (which is why, for example, n5 is comparing Bacteria and Bacteria- there are different taxa under each of these nodes).
-
-
-Check full taxonomy of each of the 3 balances- First n5:
-```{r}
-votesn5 <- name.balance(tree2, tax2, 'n5', return.votes = c('up', 'down'))
-votesn5[[c('up.votes', 'phylum')]] # Numerator at Class Level
-votesn5[[c('down.votes', 'phylum')]] # Denomenator
-
-```
-
-And visualize the position of the n5 node on a tree:
-
-```{r}
-library(ggtree)
-
-tc.nn <- name.to.nn(tree2, top.coords)
-tc.colors <- c('#a6cee3')
-p <- ggtree(tree2, layout='fan') +
-  geom_balance(node=tc.nn[1], fill=tc.colors[1], alpha=0.6) 
-p <- annotate_balance(tree2, 'n5', p=p, labels = c('n5+', 'n5-'),
-                 offset.text=0.15, bar=FALSE) 
-p
-```
-The above shows the split between the numerator of the balance (n5+: Cyanobacteria, Firmicutes, Fusobacteriota) and the denomenator (n5-: Acidobacteriota, Actinobacteriota, Armatimonadota, Bacteroidota, Chloroflexi, Cloacimonadota,       Crenarchaeota, Gemmatimonadota, Marinimicrobia (SAR406 clade), Nitrospinota, Nitrospirota, Patescibacteria,         Planctomycetota, SAR324 clade(Marine group B) and Verrucomicrobiota).
-
-I am not positive what is represented by the numerator and denomenator here (Total or Pfree), although I can guess that n5+ [numerator] is Total because a) that is the first factor that appears in ps$Size_fraction and b) there are less phyla (3 in n5+ vs. 15 in n5-) and it is a smaller chunk on the tree. I will check the relative abundance of some of these phyla, facet-wrapped by size fraction, to confirm which balances are in higher [relative] abundance in Total vs. Pfree:
-
-First make a function that plots pyloseq data as bars but doesn't include those black lines (from [here](https://stackoverflow.com/questions/48314292/removing-lines-from-barplot-in-r) )
-```{r}
-# 
-my_plot_bar = function (physeq, x = "Sample", y = "Abundance", fill = NULL, title = NULL, 
-                        facet_grid = NULL) {
-    mdf = psmelt(physeq)
-    p = ggplot(mdf, aes_string(x = x, y = y, fill = fill))
-    p = p + geom_bar(stat = "identity", position = "stack")
-    p = p + theme(axis.text.x = element_text(angle = -90, hjust = 0))
-    if (!is.null(facet_grid)) {
-        p <- p + facet_grid(facet_grid)
-    }
-    if (!is.null(title)) {
-        p <- p + ggtitle(title)
-    }
-    return(p)
-}
-```
-
-```{r}
-# Check cyanobacteria, which is in the numerator for balance n5
-ps_cyano_ra <- subset_taxa(ps_ra, phylum == "Cyanobacteria")
-
-ps_cyano_barplot <- my_plot_bar(ps_cyano_ra) + 
-  facet_wrap(~Size_fraction, scales = "free_x")
-
-ps_cyano_barplot
-
-```
-These seem more abundant in the Total size fraction, which would be consistent with numerator being the "Total" fraction.
-
-
-```{r}
-# Check Firmicutes, which is in the numerator for balance n5
-ps_firmi_ra <- subset_taxa(ps_ra, phylum == "Firmicutes")
-
-ps_firmi_barplot <- my_plot_bar(ps_firmi_ra) + 
-  facet_wrap(~Size_fraction, scales = "free_x")
-
-ps_firmi_barplot
-```
-Firmicutes reach higher abundances in Total size fraction, but on average I wouldn't necessarily say they are different between size fractions (but remember this plot is looking at relative abundance, not composition, like PhILR)
-
-
-```{r}
-# Check Fusobacteriota, which is in the numerator for balance n5
-ps_fuso_ra <- subset_taxa(ps_ra, phylum == "Fusobacteriota")
-
-ps_fuso_barplot <- my_plot_bar(ps_fuso_ra) + 
-  facet_wrap(~Size_fraction, scales = "free_x")
-
-ps_fuso_barplot
-```
-These also seem to be in higher abundance in the total, so I am beginning to decipher that the numerator of the balance is "Total" and the denomenator is "Pfree".
-
-
-Check some from the denomenator (which according to my logic should be in higher abundance in Pfree)
-```{r}
-# Check Bacteroidota, which is in the denomenator for balance n5
-ps_bacteroid_ra <- subset_taxa(ps_ra, phylum == "Bacteroidota")
-
-ps_bacteroid_barplot <- my_plot_bar(ps_bacteroid_ra) + 
-  facet_wrap(~Size_fraction, scales = "free_x")
-
-ps_bacteroid_barplot
-```
-These relative abundances seem similar in both size fractions, but perhaps a little higher on average in the Pfree
-
-
-
-```{r}
-# Check Verrucomicrobiota, which is in the denomenator for balance n5
-ps_verruco_ra <- subset_taxa(ps_ra, phylum == "Verrucomicrobiota")
-
-ps_verruco_barplot <- my_plot_bar(ps_verruco_ra) + 
-  facet_wrap(~Size_fraction, scales = "free_x")
-
-ps_verruco_barplot
-```
-These also seem similar in both size fractions, not necessarily higher in Pfree. Could be because these are relative abdundances and PhILR is assessing composition (the ILR transformed abudnance data). Check one group that has only very low rel abundance overall...
-
-
-```{r}
-# Check Nitrospinota, which is in the denomenator for balance n5 and has lower abundance overall, so might be more obvious
-ps_nitrospino_ra <- subset_taxa(ps_ra, phylum == "Nitrospinota")
-
-ps_nitrospino_barplot <- my_plot_bar(ps_nitrospino_ra) + 
-  facet_wrap(~Size_fraction, scales = "free_x")
-
-ps_nitrospino_barplot
-```
-This is definitely in higher relative abundance in the Total, not what I was expecting...
-*This makes me a bit suspicious. Some of these mismatches in interpretation of PhILR results and the relative abundances can be explained by differences in transformed (compositional) data and relative abundance. But here, this balance is barely present in the Pfree fraction. But it is in the denomenator of this balance comparison, so I am not confident about this method yet.*
-
-
-Check full taxonomy of n29
-```{r}
-votesn1114 <- name.balance(tree2, tax2, 'n29', return.votes = c('up', 'down'))
-votesn1114[[c('up.votes', 'order')]] # Numerator at order Level
-votesn1114[[c('down.votes', 'order')]] # Denomenator at order level
-
-```
-
-And visualize the position of the n29 node on a tree:
-
-```{r}
-tc.nn <- name.to.nn(tree2, top.coords)
-tc.colors <- c('#a6cee3')
-p <- ggtree(tree2, layout='fan') +
-  geom_balance(node=tc.nn[2], fill=tc.colors[1], alpha=0.6) 
-p <- annotate_balance(tree2, 'n29', p=p, labels = c('n29+', 'n29-'),
-                 offset.text=0.15, bar=FALSE) 
-p
-```
-This region is a very small part of the tree, within the Gammaproteobacteria. Hard to decipher from the full tree.
-
-
-
-Check the relative abundance of some of the identified groups from balance n29 in Total vs. Pfree.
-First CCM19a, which is in the numerator:
-```{r}
-ps_CCM19a_ra <- subset_taxa(ps_ra, order == "CCM19a")
-
-ps_CCM19a_barplot <- my_plot_bar(ps_CCM19a_ra) + 
-  facet_wrap(~Size_fraction, scales = "free_x")
-
-ps_CCM19a_barplot
-
-```
-Definitely in higher abundance in Total and is present in numerator (n29+)
-
-Check something from the denomenator, CCD24
-```{r}
-ps_CCD24_ra <- subset_taxa(ps_ra, order == "CCD24")
-
-ps_CCD24_barplot <- my_plot_bar(ps_CCD24_ra) + 
-  facet_wrap(~Size_fraction, scales = "free_x")
-
-ps_CCD24_barplot
-```
-So while the abundance of CCD24 is higher in Pfree than CCM19a is, CCD24 is still in higher relative abundance in Total than Pfree. I think there might be a relative abudnance bias against finding the Pfree- favored groups, that is being oversome by the PhILR method, which is why I keep seeing this. Try one more from the denomenator,EPR3968-O8a-Bc78
-
-```{r}
-ps_EPR3968_ra <- subset_taxa(ps_ra, order == "EPR3968-O8a-Bc78")
-
-ps_EPR3968_barplot <- my_plot_bar(ps_EPR3968_ra) + 
-  facet_wrap(~Size_fraction, scales = "free_x")
-
-ps_EPR3968_barplot
-
-```
-Here, the relative abundance definitely seems higher in Pfree, which is consistent with this group being in the denomenator.
-
-
-
-
-### ALDEx2
-ALDEx2 is a compositional approach to differential abundance that is similar to ANOVA. It models the probability of observing a count as a log-ratio transformed probability distribution rather than as direct counts, therefore correcting for differences in sequencing depth and being insensitive to the removal of ASVs from a sample.
-
-```{r}
-library(ALDEx2)
-```
-
-The ALDEx t-test can be run in one step but is doing a lot of things. Here's a quick summary from Nicholas Olberding's [website](https://www.nicholas-ollberding.com/post/introduction-to-the-statistical-analysis-of-microbiome-data-in-r/):
-
-- Generate a large number (here n=128) of posterior probabilities for the observance of each taxon (i.e. output many data.frames where the counts have been converted to proportions). This is done by Monte-Carlo sampling from a Dirichlet distribution with a small non-zero prior to deal with zeros. The total read count therefore only contributes to the precision of the proportions.
-- Apply the centered log-ratio transformation to each instance.
-- Apply the Wilcoxon test to each taxon for each simulated instance.
-- Estimate the effect size as the difference between conditions divided by the maximum difference within conditions averaging over all instances. Scaling the between group difference by the maximum within group difference gives us a standardized effect size measure.
-- Obtain the expected p-values for each taxon by averaging over all instances.
-- Apply the BH-FDR correction to control the false positive rate.
-```{r}
-aldex2_ps <- ALDEx2::aldex(data.frame(phyloseq::otu_table(ps)), phyloseq::sample_data(ps)$Size_fraction, test="t", effect = TRUE, denom="iqlr")
-```
-
-
-Plot effect size
-```{r}
-#Plot effect sizes
-ALDEx2::aldex.plot(aldex2_ps, type="MW", test="wilcox", called.cex = 1, cutoff = 0.05)
-
-```
-Differentially abundant taxa are those where the difference exceeds dispersion. Points in the top are more abundant in the Total samples and towards the bottom are more abudnance in the Pfree samples. Highlighted in red are taxa with BH-FDR corrected p-values. 
-
-However, the authors of ANDEx2 recommend using effect size rather than p-values:
-```{r}
-# Modify taxonomy table
-ps_taxonomy <- tax_table(ps) %>%
-            as("matrix") %>%
-            tibble::as_tibble(rownames = "ASV")
-
-#Clean up presentation of table
-sig_aldex2 <- aldex2_ps %>%
-  rownames_to_column(var = "ASV") %>%
-  filter(wi.eBH < 0.05) %>%
-  arrange(effect, wi.eBH) %>%
-  dplyr::select(ASV, diff.btw, diff.win, effect, wi.ep, wi.eBH)
-
-# Match ALDEx table to taxonmy table and view
-sig_aldex2 <- left_join(sig_aldex2, ps_taxonomy, by = "ASV")
-sig_aldex2
-```
-Table is arranged by diff.btw and effect. diff.btw is the median difference in clr between the Total and Pfree groups. Effect is the the diff.btw/ max(diff.win) for all instances. According to the authors, effect size is the key metric here: it is robust for a variety of distributions and tells us which ASVs are reproducibly different between groups. It is also 
-
-The taxa with negative effect values are those with higher abundance in Pfree and those with positive effect values are those in higher abundance in Total (based on plot above). There is some inconsistency here with the PhILR results-
-
-Negative values (Pfree): Several ASVs from Bacteroidota, several from Gammaproteobacteria (Burkholderiales), 2 SAR11 clades, 1 Actinobacteria.
-Positive values (Total): *there are many but here is a brief summary* Several different Alpha and Gammaproteobacteria, including the EPR3968-O8a-Bc78 and Steroidobacterales ASVs that came up before, several Chloroplast ASVs, several Desulfobacterota, several Bacteroidota, several Chloroflexi, several Nitrospirota, several Verrucomicrobiota, and more...
-
-While the chloroplasts seem to be consistenly in the Total size fraction for both the PhILR and ANDEx2 approaches (which makes sense, since these are eukaryotic), other groups like Nitrospirota, Verrucomicrobiota, Gammaproteobacteria etc. are in the Total group by ALDEx method but in the Pfree according to the PhILR method. I think the ALDEx2 method is more widely accepted for differential abundance analysis of microbiome data. Still, I should check at least one more approach to be confident...
-
-#### Save and re-load dataset again
-Above step takes a bit (20-30 mins) so save variables again up to this point incase 
-
-Since that step takes a long time, save all variables up to this point in environmnet as RData object
-```{r}
-# save.image("HREmicrobiome_analysis_vars_upto_aldex2.RData")
-```
-
-If variables are lost, come back and load everything up to now:
-```{r}
-# load("/Volumes/MyPassport/HREMicrobiomeproject2019_LargeFiles/dada2_decipher_analysis_files/post_analysis_R/HREmicrobiome_analysis_vars_upto_aldex2.RData")
-```
-*Note on the above: Copied the Rdata object into my external storage. Load it from there.*
-
-### ANCOM
-
-Following Mandal et al. 2015 and Kaul et al. 2017. ANCOM is an Aitchison log-ratio approach to differential abundance. ANCOM-II is the same approach as ANCOM, with a pre-processing step that corrects for excessive zeroes (which most microbiome data have). Here I am following the tutorial from [here](https://github.com/FrederickHuangLin/ANCOM), specifically the `moving_pics.R tutorial` in the `scripts` directory.
-
-Clone the ANCOM repository (in terminal)
-```{bash}
-git clone https://github.com/FrederickHuangLin/ANCOM.git
-```
-
-```{r}
-library(exactRankTests)
-library(nlme)
-source("ANCOM/scripts/ancom_v2.1.R")
-```
-
-
-Read in data and do some pre-processing for correct format. Based on Kaul et al. 2017, the types of zeroes we would have in this dataset should be considered *structural* zeroes.
-```{r}
-feature_table <- as.data.frame(otu_table(ps)) # absolute abundance table; taxa as rows
-meta_data <- as.data.frame(sample_data(ps)) # meta data table
-colnames(meta_data)[1] <- "Sample.ID" # simplfy column name of sample IDs from meta_data
-sample_var = "Sample.ID"; # indicate this name in a variable
-group_var = NULL # required for detecting structural zeroes and outliers.
-out_cut = 0.05; # observations with proportion of mixture distribution less than out_cut will be detected as outlier zeros
-zero_cut = 0.90; # Taxa with proportion of zeroes greater than zero_cut are not included in the analysis
-lib_cut = 1000; # Samples with library size less than lib_cut are not included in the analysis
-neg_lb = TRUE; # TRUE indicates a taxon would be classified as a structural zero in the corresponding experimental group using its asymptotic lower bound. More specifically, neg_lb = TRUE indicates you are using both criteria stated in section 3.2 of ANCOM-II to detect structural zeros
-```
-
-Pre-processing- to detect structural zeroes
-```{r}
-prepro = feature_table_pre_process(feature_table, meta_data, sample_var, group_var, 
-                                   out_cut, zero_cut, lib_cut, neg_lb)
-
-feature_table = prepro$feature_table # Preprocessed feature table
-meta_data = prepro$meta_data # Preprocessed metadata
-struc_zero = prepro$structure_zeros # Structural zero info
-```
-
-ANCOM step- takes a while so comment out for now
-```{r}
-# main_var = "Size_fraction"; 
-# p_adj_method = "BH"; # default method is Benjamini-Hochberg procedure
-# alpha = 0.05 # significance cutoff
-# adj_formula = NULL; rand_formula = NULL
-# t_start = Sys.time()
-# res = ANCOM(feature_table, meta_data, struc_zero, main_var, p_adj_method, 
-#             alpha, adj_formula, rand_formula)
-# t_end = Sys.time()
-# t_run = t_end - t_start # around 30s
-# 
-# write_csv(res$out, "ancom_results.csv")
-
-t_run
-```
-
-#### Save and re-load dataset again
-Above step took >24 hours so save variables again up to this point incase 
-
-Since that step takes a long time, save all variables up to this point in environmnet as RData object
-```{r}
-save.image("HREmicrobiome_analysis_vars_upto_ancom.RData")
-```
-
-If variables are lost, come back and load everything up to now:
-```{r}
-# load("/Volumes/MyPassport/HREMicrobiomeproject2019_LargeFiles/dada2_decipher_analysis_files/post_analysis_R/HREmicrobiome_analysis_vars_upto_ancom.RData")
-```
-*Note on the above: Copied the Rdata object into my external storage. Load it from there.*
-
-Plot- FIGURE THIS OUT
-```{r}
-# Step 3: Volcano Plot
-
-# Number of taxa except structural zeros
-n_taxa = ifelse(is.null(struc_zero), nrow(feature_table), sum(apply(struc_zero, 1, sum) == 0))
-# Cutoff values for declaring differentially abundant taxa
-cut_off = c(0.9 * (n_taxa -1), 0.8 * (n_taxa -1), 0.7 * (n_taxa -1), 0.6 * (n_taxa -1))
-names(cut_off) = c("detected_0.9", "detected_0.8", "detected_0.7", "detected_0.6")
-
-# Annotation data
-dat_ann = data.frame(x = min(res$fig$data$x), y = cut_off["detected_0.9"], label = "W[0.9]")
-
-fig = res$fig +  
-  geom_hline(yintercept = cut_off["detected_0.9"], linetype = "dashed") + 
-  geom_text(data = dat_ann, aes(x = x, y = y, label = label), 
-            size = 4, vjust = -0.5, hjust = 0, color = "orange", parse = TRUE)
-fig  
-#ggsave("images/moving_pics.jpeg", height=5, width=6.25, units='in', dpi = 300)  
-```
-
-
-
-#### STOPPED HERE
-- Try definine "core" microbiome for HRE  or for Total/ PA. Example: https://microbiome.github.io/tutorials/Core.html
-- Consider presentation like this: http://albertsenlab.org/ampvis2-heatmap/ , especially their last figure (amp_heatmap) which could be used to identify categories (FL/PA, H/L tide, season, etc) by taxonomic rank (genus?)
-- Predictions & ML: https://www.nicholas-ollberding.com/post/introduction-to-the-statistical-analysis-of-microbiome-data-in-r/
-  - Ask if rain/ tide can be used to predict which ASVs are present (alternatively define which are present in particles)
