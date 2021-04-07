@@ -37,6 +37,7 @@ library(cowplot)
 library(plotly)
 library(htmlwidgets)
 library(withr)
+library(lubridate)
 ```
 
 ##  Import and prepare the data from eDNA 
@@ -394,6 +395,13 @@ trawl_counts <- left_join(trawl_counts, stations, by = "STATION_NO")
 trawl_counts
 ```
 
+Remove 09/16/20 since there is no equivalent eDNA from that date
+```{r}
+trawl_counts <- trawl_counts %>%
+  filter(DATECODE != "20200916")
+
+trawl_counts
+```
 
 
 ## Abundance plots- Trawls
@@ -419,13 +427,106 @@ speciesbubbleplot_trawl_comname
 
 Export figure
 ```{r}
-ggsave(filename = "Figures/speciesbubbleplot_trawl_comname.eps", plot = speciesbubbleplot_trawl_comname, units = c("in"), width = 6.75, height = 15, dpi = 300)
+ggsave(filename = "Figures/speciesbubbleplot_trawl_comname.eps", plot = speciesbubbleplot_trawl_comname, units = c("in"), width = 6.75, height = 13, dpi = 300)
 ```
 
 
-# CONTINUE HERE
+## Compare Trawl and eDNA
 
-## Ordinations 
+Count unique species across all stations, grouped by date, for each method (trawl, eDNA)
+```{r}
+trawl_uniques <- trawl_counts %>%
+  group_by(DATECODE, CommonName) %>%
+  summarise(Trawl_Count = sum(count, na.rm=TRUE))
+
+trawl_uniques
+
+eDNA_uniques <- species_df%>%
+  group_by(Datecode, CommonName) %>%
+  summarise(eDNA_RelAbun = sum(Abundance, na.rm=TRUE))
+
+eDNA_uniques
+
+# Combine into one dataframe
+trawl_eDNA_abun_table <- full_join(trawl_uniques, eDNA_uniques, by=c("CommonName" = "CommonName", "DATECODE" = "Datecode"))
+
+trawl_eDNA_abun_table
+```
+
+
+Count total number of species from each method for each date
+```{r}
+eDNA_richness <- tally(eDNA_uniques, name = "eDNA")
+trawl_richness <- tally(trawl_uniques, name = "trawl")
+
+speciesrichness <- full_join(eDNA_richness, trawl_richness, c("Datecode" = "DATECODE"))
+speciesrichness <- pivot_longer(speciesrichness, !Datecode, names_to = "Method", values_to = "Richness")
+
+speciesrichness$Datecode <- ymd(speciesrichness$Datecode) # convert to date format (better for plotting)
+
+speciesrichness
+```
+
+
+Plot side-by-side
+```{r}
+species_richness_plot <- ggplot(speciesrichness, aes(x =Datecode, y = Richness)) +
+  geom_line(aes(color = Method), size = 3) +
+  theme_bw() +
+  xlab("") +
+  ylab("Species Richness")
+
+species_richness_plot
+
+# export plot
+ggsave(filename = "Figures/species_richness_plot.eps", plot = species_richness_plot, units = c("in"), width = 4, height = 3, dpi = 300)
+```
+
+
+Sum total number of species across all dates/ stations for entire study
+```{r}
+species_sums_abun_table <- trawl_eDNA_abun_table %>%
+  group_by(CommonName) %>%
+  summarise(Trawl = sum(Trawl_Count, na.rm=TRUE), eDNA = (sum(eDNA_RelAbun, na.rm=TRUE))) %>%
+  pivot_longer(!CommonName, names_to = "Method", values_to = "Abundance")
+  
+# turn zeroes to NA so they don't plot 
+species_sums_abun_table <- na_if(species_sums_abun_table,0)
+
+species_sums_abun_table
+```
+
+
+
+For each species, plot side-by-side comparison of abundance (summed over whole study) using each method
+
+```{r}
+# First create a custom color scale to make this pretty
+myColors <- colorRampPalette(brewer.pal(12,"Paired"))(55)
+names(myColors) <- levels(unique(species_sums_abun_table$CommonName))
+colScale <- scale_colour_manual(name = "CommonName",values = myColors)
+
+species_abun_sum_plot <- ggplot(species_sums_abun_table, aes(x = Abundance, y = reorder(CommonName, Abundance, function(x){sum(x,na.rm = TRUE)}), color = CommonName)) +
+  geom_point(size = 5) +
+  facet_wrap(~fct_rev(Method), scales = "free") +
+  theme_bw() +
+  xlab("Abundance") +
+  ylab("") + 
+  colScale +
+  theme(legend.position = "none")
+
+species_abun_sum_plot
+```
+
+Export plot
+```{r}
+ggsave(filename = "Figures/species_abun_sum_plot.eps", plot = species_abun_sum_plot, units = c("in"), width = 7, height = 8, dpi = 300)
+```
+
+
+
+
+## Ordinations - CONTINUE HERE???
 
 ### PCA
 PCA is essentially a type of PCoA  using the Euclidean distance matrix as input. When combined with a log-ratio transformation of the count table, this is deemed appropriate for *compositional* datasets. It is also [recommended](https://sites.google.com/site/mb3gustame/indirect-gradient-analysis/pca) as a first step in exploratory analyses.
