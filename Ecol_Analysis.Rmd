@@ -502,7 +502,7 @@ For each species, plot side-by-side comparison of abundance (summed over whole s
 
 ```{r}
 # First create a custom color scale to make this pretty
-myColors <- colorRampPalette(brewer.pal(12,"Paired"))(55)
+myColors <- colorRampPalette(brewer.pal(11,"Spectral"))(55)
 names(myColors) <- levels(unique(species_sums_abun_table$CommonName))
 colScale <- scale_colour_manual(name = "CommonName",values = myColors)
 
