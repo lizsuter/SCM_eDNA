@@ -19,9 +19,9 @@ editor_options:
 library(tidyverse)
 library(readxl)
 library(phyloseq)
-library(dada2)
+#library(dada2)
 library(Biostrings)
-library(DECIPHER)
+#library(DECIPHER)
 library(phangorn)
 library(readr)
 library(seqinr)
@@ -31,7 +31,7 @@ library(vegan)
 #library(philr)
 library(RColorBrewer)
 library(microbiome)
-library(DESeq2)
+#library(DESeq2)
 library(compositions);
 library(cowplot)
 library(plotly)
@@ -287,7 +287,7 @@ tax_table(speciesGlommed_RA)
 
 **NOTES** for Sara
 
-- I am actually getting 43 unique species- which ones am I missing that should be removed?
+- I am getting 43 unique species- which ones am I missing that should be removed?
 - Also there are two species you are calling Bay anchovy- Engraulis mordax and Anchoa mitchilli. Should the Engraulis mordax be changed to Anchoa mitchilli, similar to Engraulis encrasicolus ?
 
 
@@ -357,9 +357,6 @@ ggsave(filename = "Figures/speciesbubbleplot_eDNA_comname.eps", plot = speciesbu
 ```
 
 **NOTE** on above. The common name plot has two entries in the Bay anchovy row because, as mentioned above, there are two different species name that are labelled as Bay Anchovy. Is it OK to group these as same species (Anchoa mitchilli)
-
-**NEXT** next Sara wants the average rel abundances for each species across all dates
-
 
 
 
@@ -526,10 +523,10 @@ ggsave(filename = "Figures/species_abun_sum_plot.eps", plot = species_abun_sum_p
 
 
 
-## Ordinations - CONTINUE HERE???
+## Ordinations
 
 ### PCA
-PCA is essentially a type of PCoA  using the Euclidean distance matrix as input. When combined with a log-ratio transformation of the count table, this is deemed appropriate for *compositional* datasets. It is also [recommended](https://sites.google.com/site/mb3gustame/indirect-gradient-analysis/pca) as a first step in exploratory analyses.
+PCA is essentially a type of PCoA  using the Euclidean distance matrix as input. When combined with a log-ratio transformation of the count table, this is deemed appropriate for *compositional* datasets. It is also [recommended](https://sites.google.com/site/mb3gustame/indirect-gradient-analysis/pca) as a first step in exploratory analyses of sequencinging datasets.
 
 First do a **CLR, centered log ratio** transformation of the absolute abundance data (after filtering), as suggested by [Gloor et al. 2017](https://www.frontiersin.org/articles/10.3389/fmicb.2017.02224/full)  
 ```{r}
