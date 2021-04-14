@@ -587,12 +587,12 @@ pca_lograt <- plot_ly(pca_lograt_frame, type='scatter3d', mode='markers',
                                showticklabels=FALSE,zerolinecolor='black'),
                     zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
                                showticklabels=FALSE,zerolinecolor='black')))
-# pca_lograt
+pca_lograt
 
-# save in "Embedded_figures" dirctory so that it can be hosted at Github and linked in this notebook
+# save in "Embedded_figures" dirctory so that it can be hosted at Github and embedded in this notebook
 withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt.html"))
 
-# plot so that it renders in github
+# plot so that it renders in github notebook
 htmltools::tags$iframe(
   src=file.path("Embedded_figures/pca_lograt.html"),
   width="100%",
