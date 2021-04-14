@@ -1,13 +1,13 @@
 ---
 title: "Processing Results from DADA2 to make plots, do some statistics"
 author: "Liz Suter"
-date: "`r Sys.Date()`"
+date: "April 14, 2021"
 output: html_notebook
 editor_options: 
   chunk_output_type: inline
 ---
 
-[Link](https://htmlpreview.github.io/?https://github.com/lizsuter/SCM_eDNA/blob/main/Ecol_Analysis.nb.html) to notebook  
+[Link](https://lizsuter.github.io/files/Ecol_analysis.nb.html) to notebook  
 
 [Link](https://github.com/lizsuter/SCM_eDNA) to github repo.
 <br>
@@ -627,13 +627,11 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt
 
  
 ```
-The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~36% of the variance so keep going with different ordinations to see if we can get a better representation
 
-Test embedding image in-line instead of as code chunk:
+
 <iframe src="Embedded_figures/pca_lograt.html" height="600px" width="100%" style="border:none;"></iframe>
 
-*This is working locally but not on github. Come back and check later to see if it's just a temp problem*
-
+The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~36% of the variance so keep going with different ordinations to see if we can get a better representation
 
 
 
@@ -702,12 +700,10 @@ pcoa_jaccard <- plot_ly(pcoa_jac_df, type='scatter3d', mode='markers',
 # save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
 withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_jaccard), file="pcoa_jaccard.html", selfcontained = F))
 ```
-The Jaccard-PCoA shows separation along axis 2 in East vs West differences.
 
-Embed preview:
 <iframe src="Embedded_figures/pcoa_jaccard.html" height="600px" width="100%" style="border:none;"></iframe>
 
-*Fix, as above*
+The Jaccard-PCoA shows separation along axis 2 in East vs West differences.
 
 
 ### PCoA Bray Curtis
@@ -768,10 +764,9 @@ pcoa_bray <- plot_ly(pcoa_bray_df, type='scatter3d', mode='markers',
 # save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
 withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_bray), file="pcoa_bray.html", selfcontained = F))
 ```
-Embed preview:
+
 <iframe src="Embedded_figures/pcoa_bray.html" height="600px" width="100%" style="border:none;"></iframe>
 
-*Fix, as above*
 
 These results are similar to Jaccard: the second axis seems driven by differences in East vs West. But there are clearly other things going on here with axes 1 and 3.
 
