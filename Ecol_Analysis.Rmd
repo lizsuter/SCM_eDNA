@@ -559,36 +559,42 @@ ggplot(lograt_variances, aes(x = as.numeric(PCaxis), y = PercVar)) +
   labs(x = "PC axis", y = "% Variance", title = "Log-Ratio PCA Screeplot, CLR Tranformation")
 ```
 
-A faithful representation is to plot this ordination in 2D because the 3rd and 4th axes explain very low % of variances, while the 1st and 2nd explain a decently large proportion of variance (15.7 + 10.5 = 26.2%)
+Plot in 3D using first 3 axes since the 2nd and 3rd are similar proportions of variance. Total variance explained by first three: 15.7 + 10.5 + 10.0 = 36.2%)
 
 Visualize the PCA- 
 
 ```{r}
-lograt_pca$x #View PC values
+# Extract variances from the clr pca
 pca_lograt_frame <- data.frame(lograt_pca$x) %>% 
   rownames_to_column(var = "SampleID")
 
-# Merge metadata into the pca data table
+# Merge metadata into the pcoa data table
 pca_lograt_frame <- left_join(pca_lograt_frame, metadata, by = "SampleID")
 head(pca_lograt_frame)
 
+# Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
+eigenvalues<-round(lograt_variances[,2], digits = 4)*100
 
-# Plot PCA with Station
-pca_lograt_station <- ggplot(pca_lograt_frame, aes(x = PC1, y = PC2, color = Station)) +
-  geom_point(aes(shape = Bayside), size = 4) +
-  ylab(paste0('PC2 ', round(lograt_variances[2,2]*100,2),'%')) + #Extract y axis value from variance
-  xlab(paste0('PC1 ', round(lograt_variances[1,2]*100,2),'%')) + #Extract x axis value from variance
-  scale_color_brewer(palette="Paired") +
-  ggtitle('CLR-Euclidean PCA') +
-  coord_fixed(ratio = 1) +
-  theme_bw()
+# Plotly - 3-D
+pca_lograt <- plot_ly(pca_lograt_frame, type='scatter3d', mode='markers',
+        x=~PC1,y=~PC2,z=~PC3,colors=~brewer.pal(11,'Paired'),
+        color=~Station, symbols = c('circle','diamond'), symbol=~Bayside)%>%
+  layout(font=list(size=12),
+         title='CLR-Euclidean PCA',
+         scene=list(xaxis=list(title=paste0('Co 2 ',eigenvalues[2],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    yaxis=list(title=paste0('Co 3 ',eigenvalues[3],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
+                               showticklabels=FALSE,zerolinecolor='black')))
+pca_lograt
 
-pca_lograt_station
-
-ggsave("figures/pca_clr.eps",pca_lograt_station, width = 7, height = 5, units = c("in"))
+# save in "Embedded_figures" dirctory so that it can be hosted at Github and linked in this notebook
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt.html"))
 
 ```
-The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~26% of the variance so keep going with different ordinations to see if we can get a better representation
+3D plot and widget available at [link]()
+The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~36% of the variance so keep going with different ordinations to see if we can get a better representation
 
 
 
@@ -609,7 +615,7 @@ ps_hellinger <- transform_sample_counts(ps_ra, function(x){sqrt(x)})
 First, **Jaccard**, which builds the distance matrix based on presence/absence between samples. It does not take into account relative abundance of the taxa. Therefore this functions well for determining differences driven by rare taxa, which are weighed the same as abundant taxa.
 ```{r}
 jac_dmat<-vegdist(otu_table(ps_hellinger),method="jaccard") # Jaccard dist metric
-pcoa_jac<-pcoa(jac_dmat) # perform PCoA
+pcoa_jac<-ape::pcoa(jac_dmat) # perform PCoA
 
 # Extract variances from pcoa, from jaccard calculated dist. metric
 jac_variances <- data.frame(pcoa_jac$values$Relative_eig) %>% 
@@ -665,7 +671,7 @@ The Jaccard-PCoA shows separation along axis 2 in East vs West differences.
 Next, try a **Bray-Curtis** distance matrix with PCoA, which builds the distance matrix based on presence/absence between samples *and* relative abundance differences. This ordination will represent well the differences in samples that are driven by taxa with high relative abundances.
 ```{r}
 bray_dmat<-vegdist(otu_table(ps_hellinger),method="bray") # Bray-Curtis dist metric
-pcoa_bray<-pcoa(bray_dmat) # perform PCoA
+pcoa_bray<-ape::pcoa(bray_dmat) # perform PCoA
 
 # Extract variances from pcoa, from jaccard calculated dist. metric
 bray_variances <- data.frame(pcoa_bray$values$Relative_eig) %>% 
