@@ -2,7 +2,7 @@
 title: "Processing Results from DADA2 to make plots, do some statistics"
 author: "Liz Suter"
 date: "`r Sys.Date()`"
-output: github_document
+output: html_notebook
 editor_options: 
   chunk_output_type: inline
 ---
