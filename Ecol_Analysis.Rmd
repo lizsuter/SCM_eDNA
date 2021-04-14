@@ -594,7 +594,7 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt
 
 # plot so that it renders in github
 htmltools::tags$iframe(
-  src=file.path(getwd(), "Embedded_figures/pca_lograt.html"),
+  src=file.path("Embedded_figures/pca_lograt.html"),
   width="100%",
   height="600",
   scrolling="no",
