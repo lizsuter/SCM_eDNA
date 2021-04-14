@@ -592,19 +592,21 @@ pca_lograt
 # save in "Embedded_figures" dirctory so that it can be hosted at Github and embedded in this notebook
 withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt.html", selfcontained = F))
 
-# plot so that it renders in github notebook
-htmltools::tags$iframe(
-  src=file.path("Embedded_figures/pca_lograt.html"),
-  width="100%",
-  height="600",
-  scrolling="no",
-  seamless="seamless",
-  frameBorder="0"
-)
+# # plot so that it renders in github notebook
+# htmltools::tags$iframe(
+#   src=file.path("Embedded_figures/pca_lograt.html"),
+#   width="100%",
+#   height="600",
+#   scrolling="no",
+#   seamless="seamless",
+#   frameBorder="0"
+# )
  
 ```
 The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~36% of the variance so keep going with different ordinations to see if we can get a better representation
 
+Test embedding image in-line instead of as code chunk:
+<iframe src="Embedded_figures/pca_lograt.html" height="600px" width="100%" style="border:none;"></iframe>
 
 
 
