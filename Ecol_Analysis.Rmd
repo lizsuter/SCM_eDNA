@@ -12,8 +12,39 @@ editor_options:
 [Link](https://github.com/lizsuter/SCM_eDNA) to github repo.
 <br>
 
+# Table of Contents
+- [Load packages](#load-packages)
+- [Import and prepare the data from eDNA](#import-and-prepare-the-data-from-eDNA)
+  - [Import metadata](#import-metadata)
+  - [Import DADA2 results](#import-dada2-results)
+- [QC and filtering eDNA dataset](#qc-and-filtering-edna-dataset)
+  - [Rarefaction curves](#rarefaction-curves)
+  - [Filtering](#filtering)
+  - [Check sequencing effort](#check-sequencing-effort)
+- [Abundance plots eDNA](#abundance-plots-edna)
+  - [Abundance at family level](#abundance-at-family-level)
+  - [Bubble plots](#bubble-plots)
+- [Import and prepare the data from trawls](#import-and-prepare-the-data-from-trawls)
+  - [Import Trawl Master sheet](#import-trawl-master-sheet)
+  - [Convert to count table](#convert-to-count-table)
+- [Abundance plots Trawls](#abundance-plots-trawls)
+- [Abundance Plots Compare Trawl and eDNA](#abundance-plots-compare-trawl-and-edna)
+- [Exploratory Analyses](#exploratory-analyses)
+  - [Ordinations on eDNA](#ordinations-on-edna)
+      - [PCA](#pca)
+      - [PCoA Jaccard](#pcoa-jaccard)
+      - [PCoA Bray Curtis](#pcoa-bray-curtis)
+      - [NMDS](#nmds)
+      - [eDNA Ordinations Summary](#edna-ordinations-summary)
+      
 
-## Load packages
+  
+
+  
+
+
+
+# Load packages
 
 ```{r}
 library(tidyverse)
@@ -40,15 +71,15 @@ library(withr)
 library(lubridate)
 ```
 
-##  Import and prepare the data from eDNA 
+#  Import and prepare the data from eDNA 
 
-#### Import Metadata
+## Import metadata
 ```{r}
 metadata <- read_csv("sample_data.csv")
 ```
 
 
-#### Import DADA2 results:
+## Import DADA2 results
 Import count table and taxonomy file. I slightly modified otutable.csv in Excel to otutable_mod.csv to remove the quotes around seq names and put NA placehoder as first col name (which was above row names)
 ```{r}
 # Import Count table. Skip first row of tsv file, which is just some text
@@ -88,7 +119,7 @@ metadata
 
 
 
-#### Make phyloseq object
+## Make phyloseq object
 
 I want to use the phyloseq package for some plotting/ statistics, which first requires making phyloseq objects out of each of input data tables- 
 
@@ -129,9 +160,9 @@ ps <- phyloseq(ASV,	TAX,	META)
 
 
 
-## Quality check and filtering- eDNA
+# QC and filtering eDNA dataset
 
-### Rarefaction curves
+## Rarefaction curves
 
 ```{r}
 rarecurve(otu_table(ps), step=50, cex=0.5)
@@ -145,7 +176,7 @@ dev.off()
 Most samples look like they were sampled to completion. Be weary of T3S11, T1S2, and maybe T4S5
 
 
-### Filtering
+## Filtering
 
 Check some features of the phyloseq object
 ```{r}
@@ -192,9 +223,9 @@ unique(tax_table(ps)[, "class"])
 ```
 
 
-### Plot total sequences by phyla to check out sequencing effort
+## Check sequencing effort
 
-Check overall how the phyla are distributed among samples
+Check overall how ASVs there are per sample
 
 ```{r}
 # First aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
@@ -239,7 +270,7 @@ tax_table(ps) <- gsub(tax_table(ps), pattern = "Engraulis encrasicolus", replace
 
 
 
-## Abundance plots- eDNA
+# Abundance plots eDNA
 
 For plotting, use *relative abundances* (# of ASV sequences/sum total sequences in sample), calculated easily using microbiome::transform
 
@@ -262,7 +293,7 @@ write.csv(RelAbun_dataframe,"results/otutable_relabun.csv", row.names = TRUE)
 
 
 
-### Plot abundance of families from all samples to do some quality control
+## Abundance at family level
 Then aglomerate the ASVs at the family level using the phyloseq function, tax_glom
 ```{r}
 familyGlommed_RA = tax_glom(ps_ra, "family")
@@ -291,7 +322,7 @@ tax_table(speciesGlommed_RA)
 - Also there are two species you are calling Bay anchovy- Engraulis mordax and Anchoa mitchilli. Should the Engraulis mordax be changed to Anchoa mitchilli, similar to Engraulis encrasicolus ?
 
 
-### Bubble plots
+## Bubble plots
 
 Based on my previous [scripts](https://github.com/lizsuter/Cariaco_Euk) with Cariaco Eukaryotic data
 ```{r}
@@ -360,9 +391,9 @@ ggsave(filename = "Figures/speciesbubbleplot_eDNA_comname.eps", plot = speciesbu
 
 
 
-##  Import and prepare the data from trawls 
+#  Import and prepare the data from trawls 
 
-### Import Trawl Master sheet
+## Import Trawl Master sheet
 
 ```{r}
 # import 4th sheet from  Excel file which contains morphometric data for each individual collected for every date
@@ -375,7 +406,7 @@ stations
 
 ```
 
-### Convert to count table
+## Convert to count table
 Make an equivalent to an OTU table, grouping by date and location and representing counts for every unique species
 
 ```{r}
@@ -401,7 +432,7 @@ trawl_counts
 ```
 
 
-## Abundance plots- Trawls
+# Abundance plots Trawls
 
 ```{r}
 speciesbubbleplot_trawl_comname <- ggplot(trawl_counts, aes(x = STATION_NA, y = fct_rev(CommonName), color = STATION_NA)) + 
@@ -428,7 +459,7 @@ ggsave(filename = "Figures/speciesbubbleplot_trawl_comname.eps", plot = speciesb
 ```
 
 
-## Compare Trawl and eDNA
+# Abundance Plots Compare Trawl and eDNA
 
 Count unique species across all stations, grouped by date, for each method (trawl, eDNA)
 ```{r}
@@ -523,7 +554,9 @@ ggsave(filename = "Figures/species_abun_sum_plot.eps", plot = species_abun_sum_p
 
 
 
-## Ordinations
+# Exploratory Analyses
+
+## Ordinations on eDNA
 
 ### PCA
 PCA is essentially a type of PCoA  using the Euclidean distance matrix as input. When combined with a log-ratio transformation of the count table, this is deemed appropriate for *compositional* datasets. It is also [recommended](https://sites.google.com/site/mb3gustame/indirect-gradient-analysis/pca) as a first step in exploratory analyses of sequencinging datasets.
@@ -587,20 +620,11 @@ pca_lograt <- plot_ly(pca_lograt_frame, type='scatter3d', mode='markers',
                                showticklabels=FALSE,zerolinecolor='black'),
                     zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
                                showticklabels=FALSE,zerolinecolor='black')))
-pca_lograt
+# pca_lograt
 
-# save in "Embedded_figures" dirctory so that it can be hosted at Github and embedded in this notebook
+# save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
 withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt.html", selfcontained = F))
 
-# # plot so that it renders in github notebook
-# htmltools::tags$iframe(
-#   src=file.path("Embedded_figures/pca_lograt.html"),
-#   width="100%",
-#   height="600",
-#   scrolling="no",
-#   seamless="seamless",
-#   frameBorder="0"
-# )
  
 ```
 The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~36% of the variance so keep going with different ordinations to see if we can get a better representation
@@ -613,7 +637,7 @@ Test embedding image in-line instead of as code chunk:
 
 
 
-### PCoA
+### PCoA Jaccard
 The more traditional approach to ordinations is to do a PCoA on a distance matrix such as Bray-Curtis, Jaccard, or Unifrac. While these are not considered compositional approaches, when combined with pre-treatment (transformations) they become more appropriate. One such transformation that I will use here is the Hellinger transformation.
 
 The different distance matrices also tell you a few different things about the dataset so I will run through this to try to see if I can tease those out. 
@@ -673,13 +697,20 @@ pcoa_jaccard <- plot_ly(pcoa_jac_df, type='scatter3d', mode='markers',
                                showticklabels=FALSE,zerolinecolor='black'),
                     zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
                                showticklabels=FALSE,zerolinecolor='black')))
-pcoa_jaccard
+# pcoa_jaccard
 
-withr::with_dir('Figures', htmlwidgets::saveWidget(as_widget(pcoa_jaccard), file="pcoa_jaccard.html"))
+# save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_jaccard), file="pcoa_jaccard.html", selfcontained = F))
 ```
 The Jaccard-PCoA shows separation along axis 2 in East vs West differences.
 
+Embed preview:
+<iframe src="Embedded_figures/pcoa_jaccard.html" height="600px" width="100%" style="border:none;"></iframe>
 
+*Fix, as above*
+
+
+### PCoA Bray Curtis
 
 Next, try a **Bray-Curtis** distance matrix with PCoA, which builds the distance matrix based on presence/absence between samples *and* relative abundance differences. This ordination will represent well the differences in samples that are driven by taxa with high relative abundances.
 ```{r}
@@ -732,13 +763,19 @@ pcoa_bray <- plot_ly(pcoa_bray_df, type='scatter3d', mode='markers',
                                showticklabels=FALSE,zerolinecolor='black'),
                     zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
                                showticklabels=FALSE,zerolinecolor='black')))
-pcoa_bray
+# pcoa_bray
 
-withr::with_dir('Figures', htmlwidgets::saveWidget(as_widget(pcoa_bray), file="pcoa_bray.html"))
+# save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_bray), file="pcoa_bray.html", selfcontained = F))
 ```
+Embed preview:
+<iframe src="Embedded_figures/pcoa_bray.html" height="600px" width="100%" style="border:none;"></iframe>
 
-These results are similar to Jaccard: the second axis seems driven by differences in East vs West. But there are clearly other things going on here with axies 1 and 3.
-I think this is a good representation of the data: together the 3 axes explain 54.13% of the variance.
+*Fix, as above*
+
+These results are similar to Jaccard: the second axis seems driven by differences in East vs West. But there are clearly other things going on here with axes 1 and 3.
+
+I think this ordination is a good representation of the data: together the 3 axes explain 54.13% of the variance.
 
 
 
@@ -840,10 +877,17 @@ ggsave("figures/nmds_bray.eps",nmds_bray, width = 7, height = 5, units = c("in")
 ```
 Very similar to Jaccard results. High-ish stress (0.15) 
 
+### eDNA Ordinations Summary
+The ordination that explained the most variance in the eDNA dataset was the PCoA on the Bray-Curtis dissimilarity matri after Hellinger transformation. This is similar to the approach presented in [Lacoursière‐Roussel et al. 2018](https://onlinelibrary.wiley.com/doi/abs/10.1002/ece3.4213).
 
---> CONTINUE HERE
+Next: fit environmental vectors to this ordination to see which can be possibly explain some of the variation among samples and among species.
 
-#### Summary
-XXX
+NOTE- see this [discussion](https://stats.stackexchange.com/questions/305965/can-i-use-the-clr-centered-log-ratio-transformation-to-prepare-data-for-pca) and this [paper](https://link.springer.com/article/10.1007/s11004-008-9196-y) on why CCA should not be used with CLR-transformed compositional data to explore correlations.
+
+## PCoA with Environmental Variables
+
+Import environmental data from each station/ date
+# STOPPED HERE
+
 
 
