@@ -608,6 +608,8 @@ The CLR-Euclidean PCA reveals there is some separation according to East vs West
 Test embedding image in-line instead of as code chunk:
 <iframe src="Embedded_figures/pca_lograt.html" height="600px" width="100%" style="border:none;"></iframe>
 
+*This is working locally but not on github. Come back and check later to see if it's just a temp problem*
+
 
 
 
