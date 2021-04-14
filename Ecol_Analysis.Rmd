@@ -590,7 +590,7 @@ pca_lograt <- plot_ly(pca_lograt_frame, type='scatter3d', mode='markers',
 pca_lograt
 
 # save in "Embedded_figures" dirctory so that it can be hosted at Github and embedded in this notebook
-withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt.html"))
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt.html", selfcontained = F))
 
 # plot so that it renders in github notebook
 htmltools::tags$iframe(
@@ -601,7 +601,7 @@ htmltools::tags$iframe(
   seamless="seamless",
   frameBorder="0"
 )
-
+ 
 ```
 The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~36% of the variance so keep going with different ordinations to see if we can get a better representation
 
