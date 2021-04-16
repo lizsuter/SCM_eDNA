@@ -10,11 +10,13 @@ editor_options:
 [Link](https://lizsuter.github.io/files/Ecol_analysis.nb.html) to notebook  
 
 [Link](https://github.com/lizsuter/SCM_eDNA) to github repo.
-<br>
+
+
+<br/>
 
 # Table of Contents
 - [Load packages](#load-packages)
-- [Import and prepare the data from eDNA](#import-and-prepare-the-data-from-eDNA)
+- [Import and prepare the data from eDNA](#import-and-prepare-the-data-from-edna)
   - [Import metadata](#import-metadata)
   - [Import DADA2 results](#import-dada2-results)
 - [QC and filtering eDNA dataset](#qc-and-filtering-edna-dataset)
@@ -34,13 +36,12 @@ editor_options:
       - [PCA](#pca)
       - [PCoA Jaccard](#pcoa-jaccard)
       - [PCoA Bray Curtis](#pcoa-bray-curtis)
-      - [NMDS](#nmds)
+      - [NMDS Aitchison](#nmds-aitchison)
+      - [NMDS Jacaard](#nmds-jacaard)
+      - [NMDS Bray Curtis](#nmds-bray-curtis)
       - [eDNA Ordinations Summary](#edna-ordinations-summary)
       
-
-  
-
-  
+<br/>
 
 
 
@@ -775,7 +776,7 @@ I think this ordination is a good representation of the data: together the 3 axe
 
 
 
-### NMDS
+### NMDS Aitchison
 Lastly, try a non-metric dimensional scaling ordination. PCA/PCoA are metric and attempt to rotate axes to fit the distance matrix distribution. An NMDS represents the data in 2-axes, by constraining the distribution of the points. Similar to above, this can be combined with different pre-treatment of the data.
 
 First try the compositional approach, an **NMDS on CLR-tranformed data using the Euclidean distances** (aka Aitchison distance)
@@ -809,6 +810,7 @@ ggsave("figures/nmds_aitch.eps",nmds_aitch, width = 7, height = 5, units = c("in
 ```
 The above has a relatively high stress (>0.2) so should be interpreted with caution. But it does show some separation East vs West along NMDS 1.
 
+### NMDS Jacaard
 
 
 Next try a **Jaccard NMDS**, which will represent differences in presence/absence among samples, emphasizing both abundant and rare taxa the same
@@ -840,6 +842,8 @@ nmds_jaccard
 ggsave("figures/nmds_jaccard.eps",nmds_jaccard, width = 7, height = 5, units = c("in"))
 ```
 This is still a relatively high stress (>0.1) so should be interpreted with caution. Similar to Aitchison-distance nMDS but there is a little more separation of East vs West on NMDS 2 axis.
+
+### NMDS Bray Curtis
 
 
 Next try a **Bray-Curis NMDS**, which will represent differences in presence/absence among samples *and* relative abundance, thus emphasizing impacts of highly abundant taxa.
