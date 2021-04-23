@@ -1,7 +1,7 @@
 ---
 title: "Processing Results from DADA2 to make plots, do some statistics"
 author: "Liz Suter"
-date: "April 22, 2021"
+date: "April 23, 2021"
 output: html_notebook
 editor_options: 
   chunk_output_type: inline
@@ -68,7 +68,6 @@ library(plotly)
 library(htmlwidgets)
 library(withr)
 library(lubridate)
-library(ggvegan)
 ```
 
 #  Import and prepare the data from eDNA 
@@ -561,6 +560,10 @@ ggsave(filename = "Figures/species_abun_sum_plot.eps", plot = species_abun_sum_p
 
 ## Ordinations on eDNA
 
+I will try PCoA, PCA (the Euclidean PCoA) and NMDS ordinations in combination with different tranformations and distance metrics in order to see which explain the most variance in the dataset.
+
+- NOTE- see this [discussion](https://stats.stackexchange.com/questions/305965/can-i-use-the-clr-centered-log-ratio-transformation-to-prepare-data-for-pca) and this [paper](https://link.springer.com/article/10.1007/s11004-008-9196-y) on why CCA should not be used with CLR-transformed compositional data to explore correlations.
+
 ### PCA
 PCA is essentially a type of PCoA  using the Euclidean distance matrix as input. When combined with a log-ratio transformation of the count table, this is deemed appropriate for *compositional* datasets. It is also [recommended](https://sites.google.com/site/mb3gustame/indirect-gradient-analysis/pca) as a first step in exploratory analyses of sequencinging datasets.
 
@@ -595,7 +598,7 @@ ggplot(lograt_variances, aes(x = as.numeric(PCaxis), y = PercVar)) +
   labs(x = "PC axis", y = "% Variance", title = "Log-Ratio PCA Screeplot, CLR Tranformation")
 ```
 
-Plot in 3D using first 3 axes since the 2nd and 3rd are similar proportions of variance. Total variance explained by first three: 15.7 + 10.5 + 10.0 = **36.2%**)
+Total variance explained by first three axes= 15.7 + 10.5 + 10.0 = **36.2%**. Since the second and third axes are similar, plot in 3D with 3 axes.
 
 Visualize the PCA- 
 
@@ -634,16 +637,17 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt
 
 <iframe src="Embedded_figures/pca_lograt.html" height="600px" width="100%" style="border:none;"></iframe>
 
-The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~36% of the variance so keep going with different ordinations to see if we can get a better representation
+**Summary** The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~36% of the variance so keep going with different ordinations to see if there is a better representation
 
 
 
 ### PCoA Jaccard
-The more traditional approach to ordinations is to do a PCoA on a distance matrix such as Bray-Curtis, Jaccard, or Unifrac. While these are not considered compositional approaches, when combined with pre-treatment (transformations) they become more appropriate. One such transformation that I will use here is the Hellinger transformation.
+The more traditional approach to ordinations is to do a PCoA on a distance matrix such as Bray-Curtis, Jaccard, or Unifrac. When combined with a transformation, they become more appropriate for NGS data. One such common transformation is the Hellinger transformation.
 
-The different distance matrices also tell you a few different things about the dataset so I will run through this to try to see if I can tease those out. 
+The different distance matrices also tell you a few different things about the dataset so I will run try different one to try to see if I can tease those out. 
 
 Before calculating any distance matrix, do a transformation of the filtered count table. Hellinger transformation is the square root of the relative abundance, so calculate it based on the ps_ra object:
+
 ```{r}
 ps_hellinger <- transform_sample_counts(ps_ra, function(x){sqrt(x)})
 
@@ -671,7 +675,7 @@ ggplot(jac_variances, aes(x = as.numeric(PCaxis), y = PercVar)) +
         axis.text.x = element_blank()) +
   labs(x = "PC axis", y = "% Variance", title = "Jaccard PCoA Screeplot")
 ```
-The first two axes (19.0 + 9.6 = 28.6) are OK. But plot the first 3 axes since the 2nd and 3rd explain a similar amount of variance, (19.0 + 9.6 + 8.4 = **37%**) 
+The first two axes (19.0 + 9.6 = 28.6) are OK. But plot the first 3 axes since the 2nd and 3rd explain a similar amount of variance, (19.0 + 9.6 + 8.4 = **37%** total variance explained) 
 
 Plot in 3D with Plotly
 ```{r}
@@ -700,18 +704,20 @@ pcoa_jaccard <- plot_ly(pcoa_jac_df, type='scatter3d', mode='markers',
                                showticklabels=FALSE,zerolinecolor='black')))
 # pcoa_jaccard
 
-# save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
+# save figure in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
 withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_jaccard), file="pcoa_jaccard.html", selfcontained = F))
 ```
 
 <iframe src="Embedded_figures/pcoa_jaccard.html" height="600px" width="100%" style="border:none;"></iframe>
 
-The Jaccard-PCoA shows separation along axis 2 in East vs West differences.
+The Jaccard-PCoA shows some separation along axis 2 and axis 3 in East vs West differences.
 
 
 ### PCoA Bray Curtis
 
 Next, try a **Bray-Curtis** distance matrix with PCoA, which builds the distance matrix based on presence/absence between samples *and* relative abundance differences. This ordination will represent well the differences in samples that are driven by taxa with high relative abundances.
+
+NOTE: I need to use a correction here for negative eigenvalues. Read more [here](https://fromthebottomoftheheap.net/slides/intro-vegan-webinar-2020/intro-to-vegan.html#53)
 ```{r}
 bray_dmat<-vegdist(otu_table(ps_hellinger),method="bray") # Bray-Curtis dist metric
 pcoa_bray<-ape::pcoa(bray_dmat) # perform PCoA in ape. But getting negative eigenvalues, so need to add correction. wcmdscale from base R also performs PCoA and can add cailliez correction
@@ -744,7 +750,7 @@ ggplot(bray_variances, aes(x = as.numeric(PCaxis), y = PercVar)) +
         axis.text.x = element_blank()) +
   labs(x = "PC axis", y = "% Variance", title = "Bray-Curtis PCoA Screeplot")
 ```
-The first two axes (21.1 + 10.1) are pretty good again but I am still going to experiment in the plot with the 3rd axis since it is similar to the second (9.5%; total variance explained = **40.7%**)
+The first two axes (21.1 + 11.0) are pretty good again but I am still going to experiment in the plot with the 3rd axis since it is similar to the second (9.5%; total variance explained = **41.6%**)
 
 
 
@@ -752,7 +758,7 @@ The first two axes (21.1 + 10.1) are pretty good again but I am still going to e
 Plot in 3D with Plotly
 ```{r}
 # Extract variances from the pcoa
-pcoa_bray_df <- data.frame(pcoa_bray$vectors) %>% 
+pcoa_bray_df <- data.frame(pcoa_bray$points) %>% 
   rownames_to_column(var = "SampleID")
 
 # Merge metadata into the pcoa data table
@@ -763,8 +769,8 @@ head(pcoa_bray_df)
 eigenvalues<-round(bray_variances[,2], digits = 4)*100
 
 # Plotly - 3-D
-pcoa_bray <- plot_ly(pcoa_bray_df, type='scatter3d', mode='markers',
-        x=~Axis.2,y=~Axis.3,z=~Axis.1,colors=~brewer.pal(11,'Paired'),
+pcoa_bray <- plot_ly(pcoa_bray_df, type='scatter3d', mode='markers', 
+                     x=~Dim2, y=~Dim3, z=~Dim1, colors=~brewer.pal(11,'Paired'),
         color=~Station, symbols = c('circle','diamond'), symbol=~Bayside)%>%  
   layout(font=list(size=12),
          title='PCoA Bray-Curtis Distance',
@@ -783,9 +789,7 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_bray)
 <iframe src="Embedded_figures/pcoa_bray.html" height="600px" width="100%" style="border:none;"></iframe>
 
 
-These results are similar to Jaccard: the second axis seems driven by differences in East vs West. But there are clearly other things going on here with axes 1 and 3.
-
-I think this ordination is a good representation of the data: together the 3 axes explain 54.13% of the variance.
+These results along axes 1, 2, and 3 are similar to Jaccard, but there is MORE separation along axis 2, indicating that incorporating the differences in abundance helps explain more variance in the dataset.
 
 
 
@@ -895,7 +899,6 @@ Very similar to Jaccard results. **Moderately high stress (0.15)**
 The ordination that explained the most variance in the eDNA dataset was the PCoA using the Bray-Curtis dissimilarity matrix after Hellinger transformation. This is similar to the approach presented in [Lacoursière‐Roussel et al. 2018](https://onlinelibrary.wiley.com/doi/abs/10.1002/ece3.4213).
 
 - Next: fit environmental vectors to this ordination to see which can be possibly explain some of the variation among samples and among species.
-- NOTE- see this [discussion](https://stats.stackexchange.com/questions/305965/can-i-use-the-clr-centered-log-ratio-transformation-to-prepare-data-for-pca) and this [paper](https://link.springer.com/article/10.1007/s11004-008-9196-y) on why CCA should not be used with CLR-transformed compositional data to explore correlations.
 
 ## PCoA with Environmental Variables
 
@@ -903,32 +906,52 @@ Recreate, in 2D, the first two axes of the ordination (PCoA with Bray distance m
 
 If not making 3D plots, can do this directly in phyloseq (eg. https://www.gdc-docs.ethz.ch/MDA/handouts/MDA20_PhyloseqFormation_Mahendra_Mariadassou.pdf)
 
-## APRIL 22nd, STOPPED HERE. THERES NO WAY TO COERCE A VEGAN WCDMSCALE ORDIANTION OBJECT INTO GGPLOT?? TRIED GGVEGAN BUT NOT COMPATIBLE WITH CMDSCALE. MAY HAVE TO JUST PLOT USING BASE R AND STYLE UP AS MUCH AS POSSIBLE
-
-# NOTE THAT THE PLOTS BELOW, MADE IN PHYLOSEQ, ARE NOT GOOD BECAUSE THEY DONT USE THE CAILLIEZ CORRECTION FOR NEGATIVE EIGENVALUES. PLUS PHYLOSEQ CAN DO ELLIPSES BUT NOT ENVFIT VECTORS
 
 ```{r}
-# try directly in phyloseq, similar to 
-ps_hellinger_bray_pcoa <- ordinate(ps_hellinger, method = "PCoA", distance = "bray")
-
-plot_ordination(ps_hellinger, ps_hellinger_bray_pcoa, color = "Station") +
-  geom_point(aes(shape = Bayside), size = 4) +
-  scale_color_brewer(palette="Paired") +
-  ggtitle('Bray Curtis PCoA') +
-  coord_fixed(ratio = 1) +
-  theme_bw()
-
-# but the above doesn't incorporate the correction for negative eigenvalues.
-# we want to use wcmdscale (from vegan) to get the pcoa and pass it onto phyloseq for the plotting functions
 pcoa_bray <- wcmdscale(bray_dmat, eig = TRUE, add = "cailliez")
-ordiplot (pcoa, display = 'sites', type = 'text')
+
+# trim metadata to remove samples that were removed during QC
+metadata_ordinations <- metadata[metadata$SampleID %in% sample_data(ps_hellinger)$SampleID,]
+
+# fit environmental factors and save stats output
+pcoa_bray_envfit <- envfit(pcoa_bray, metadata_ordinations)
+capture.output(pcoa_bray_envfit, file = "stats_results/pcoa_bray_envfit.txt")
+
+# signficant variables include Datecode (p = 0.029), Month (p = 0.050), Station (p = 0.011), and, less significantly, Habitat (p = 0.086)
+
+# fit the significant variables to the ordination
+pcoa_bray_envfit_datecode <- envfit(pcoa_bray~Datecode+Habitat, data = metadata_ordinations, permutations = 9999)
+
+# plot sig variables ontop of PCoA
+plot(pcoa_bray)
+plot(pcoa_bray_envfit_datecode, col = "black", cex=1.5)
+
+## STOPPED HERE. KEEP EDITING ABOVE
+
+# basic plot
+ordispider(pcoa_bray_envfit)
+
+plot(pcoa_bray)
+plot(pcoa_bray_envfit)
 
 
-ggvegan::autoplot.rda(pcoa_bray, layers = "sites", arrows = FALSE)
-
-
+# plot from plotly above. Modify to to 2D with same color scheme + vectors
+plot <- plot_ly(pcoa_bray_df, type='scatter3d', mode='markers', 
+                     x=~Dim2, y=~Dim3, z=~Dim1, colors=~brewer.pal(11,'Paired'),
+        color=~Station, symbols = c('circle','diamond'), symbol=~Bayside)%>%  
+  layout(font=list(size=12),
+         title='PCoA Bray-Curtis Distance',
+         scene=list(xaxis=list(title=paste0('Co 2 ',eigenvalues[2],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    yaxis=list(title=paste0('Co 3 ',eigenvalues[3],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
+                               showticklabels=FALSE,zerolinecolor='black')))
 ```
 
+
+
+------ Fix below after plot above is fixed- Cant use phyloseqs pcoa ordination with cailliez correction
 
 Check how samples differ in the ordination according to different environmental variables
 
