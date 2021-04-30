@@ -203,7 +203,7 @@ Also check class Mammalia, to see if contamination or real:
 ```{r}
 tax_table(subset_taxa(ps, class == 'Mammalia'))
 ```
-These are human, wild boar, cat (...cat lady), and cattle. All are contamination so delete all Mammalia
+These are human, wild boar, cat (ahem...cat lady), and cattle. All are contamination so delete all Mammalia
 
 ```{r}
 ps <- subset_taxa(ps, !class == 'Mammalia')
@@ -224,7 +224,7 @@ unique(tax_table(ps)[, "class"])
 
 ## Check sequencing effort
 
-Check overall how ASVs there are per sample
+Check overall how many ASVs there are per sample
 
 ```{r}
 # First aglomerate the ASVs at the phylum level using the phyloseq function, tax_glom
@@ -256,13 +256,34 @@ ps <- subset_samples(ps, !SampleID == "T1PosCon" & !SampleID == "T2PosCon" & !Sa
 ps
 ```
 
+47 samples remaining with 368 ASVs
 
-And lastly, correct some taxonomy: According to Sara, Engraulis encrasicolus (European anchovy) should be Anchoa mitchilli (Bay anchovy):
+
+And lastly, correct some taxonomy: **First* according to Sara, Engraulis encrasicolus (European anchovy) and Engraulis mordax should be Anchoa mitchilli (Bay anchovy):
 
 ```{r}
 tax_table(ps) <- gsub(tax_table(ps), pattern = "Engraulis encrasicolus", replacement = "Anchoa mitchilli")  
 
+tax_table(ps) <- gsub(tax_table(ps), pattern = "Engraulis mordax", replacement = "Anchoa mitchilli")  
+
 ```
+
+**Second** the Fourhorn sculpin (Myoxocephalus quadricornis) is actually an Arctic species. This ASV has 100% PID and 100% query cover to Myoxocephalus quadricornis & Myoxocephalus scorpius (another Arctic species) and 99.4% PID, 100% query cover to Myoxocephalus aenaeus. This latter one is actually the regional species, so change this ASV name to this one:
+```{r}
+tax_table(ps) <- gsub(tax_table(ps), pattern = "Myoxocephalus quadricornis", replacement = "Myoxocephalus aenaeus") 
+tax_table(ps) <- gsub(tax_table(ps), pattern = "Fourhorn sculpin", replacement = "Grubby sculpin") 
+```
+
+**Third** Scomber japonicus, the chub mackerel, is only found in the Indo-Pacific. While this is a commercial product and could be here due to sewage, it is more likely the Scomber colias (Atlantic chub mackerel), which is found regionally in the open ocean Atlantic. The blast hit to Scomber japonicus has PID of 100% and query cover of 100% while the similarity to Scomber colias 100% query cover/ 99.41% PID.
+
+```{r}
+tax_table(ps) <- gsub(tax_table(ps), pattern = "Scomber japonicus", replacement = "Scomber colias") 
+tax_table(ps) <- gsub(tax_table(ps), pattern = "Chub mackerel", replacement = "Atlantic chub mackerel") 
+
+```
+
+
+
 
 47 samples remainwith 368 unique ASVs
 
@@ -315,10 +336,7 @@ tax_table(speciesGlommed_RA)
 
 ```
 
-**NOTES** for Sara
 
-- I am getting 43 unique species- which ones am I missing that should be removed?
-- Also there are two species you are calling Bay anchovy- Engraulis mordax and Anchoa mitchilli. Should the Engraulis mordax be changed to Anchoa mitchilli, similar to Engraulis encrasicolus ?
 
 
 ## Bubble plots
@@ -359,7 +377,6 @@ speciesbubbleplot_eDNA_sciname
 
 
 Plot by species common name
-
 ```{r}
 speciesbubbleplot_eDNA_comname <- ggplot(species_df, aes(x = Station, y = fct_rev(CommonName), color = Station)) + # the fancy stuff around y (CommonName) helps to present it in reverse order in the plot (from top to btm alphabetically)
   geom_point(aes(size = Abundance, fill = Station), color = "black", pch = 21)+
@@ -386,13 +403,91 @@ ggsave(filename = "Figures/speciesbubbleplot_eDNA_sciname.eps", plot = speciesbu
 ggsave(filename = "Figures/speciesbubbleplot_eDNA_comname.eps", plot = speciesbubbleplot_eDNA_comname, units = c("in"), width = 7, height = 12, dpi = 300)
 ```
 
-**NOTE** on above. The common name plot has two entries in the Bay anchovy row because, as mentioned above, there are two different species name that are labelled as Bay Anchovy. Is it OK to group these as same species (Anchoa mitchilli)
+
+
+
+### Filter out Elasmobranchs
+The above look good but they include two elasmobranchs, the dusky smooth-hound shark and cownose ray. While these are probably real, the MiFISH primers don't actually target the elasmobranchs, so we can't trust this assay to fairly represent these non-target species. Filter out and re-make the bubble plots:
+
+```{r}
+ps_ra_no_elasmo <- subset_taxa(ps_ra, !CommonName == 'Cownose ray')
+ps_ra_no_elasmo <- subset_taxa(ps_ra_no_elasmo, !CommonName =='Dusky smooth-hound shark')
+
+# and check
+speciesGlommed_RA_no_elasmo = tax_glom(ps_ra_no_elasmo, "CommonName")
+speciesGlommed_RA_no_elasmo
+tax_table(speciesGlommed_RA_no_elasmo)
+```
+
+Remake bubble plots. First melt for tidyverse format
+
+```{r}
+# convert ps object to dataframe using phyloseq's psmelt
+species_df_no_elasmo <- psmelt(speciesGlommed_RA_no_elasmo)
+
+# replace zeroes in the table with NA
+species_df_no_elasmo[species_df_no_elasmo == 0] <- NA
+
+# and remove rows with NAs in abundance  (this is so they don't appear as small dots in plot)
+species_df_no_elasmo <-  filter(species_df_no_elasmo, !is.na(Abundance))
+```
+
+
+
+Plot by species, scientific name
+```{r}
+speciesbubbleplot_eDNA_sciname_no_elasmo <- ggplot(species_df_no_elasmo, aes(x = Station, y = fct_rev(species), color = Station)) + # the fancy stuff around y (species) helps to present it in reverse order in the plot (from top to btm alphabetically)
+  geom_point(aes(size = Abundance, fill = Station), color = "black", pch = 21)+
+  scale_size(range = c(1,15)) +
+  scale_size_area(breaks = c(0,.25,.5,.75,1), max_size = 6)+
+  xlab("")+
+  ylab("")+
+  labs(size="Relative Abundance")+
+  theme_bw() +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  facet_grid(Datecode~Bayside, scales = "free", space = "free", drop= TRUE)
+
+speciesbubbleplot_eDNA_sciname_no_elasmo
+```
+
+
+
+Plot by species common name
+```{r}
+speciesbubbleplot_eDNA_comname_no_elasmo <- ggplot(species_df_no_elasmo, aes(x = Station, y = fct_rev(CommonName), color = Station)) + # the fancy stuff around y (CommonName) helps to present it in reverse order in the plot (from top to btm alphabetically)
+  geom_point(aes(size = Abundance, fill = Station), color = "black", pch = 21)+
+  scale_size(range = c(1,15)) +
+  scale_size_area(breaks = c(0,.25,.5,.75,1), max_size = 6)+
+  xlab("")+
+  ylab("")+
+  labs(size="Relative Abundance")+
+  theme_bw() +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  facet_grid(Datecode~Bayside, scales = "free", space = "free", drop= TRUE)
+
+speciesbubbleplot_eDNA_comname_no_elasmo
+```
+
+
+Exportfigures
+```{r}
+ggsave(filename = "Figures/speciesbubbleplot_eDNA_sciname_no_elasmo.eps", plot = speciesbubbleplot_eDNA_sciname_no_elasmo, units = c("in"), width = 7, height = 12, dpi = 300)
+
+ggsave(filename = "Figures/speciesbubbleplot_eDNA_comname_no_elasmo.eps", plot = speciesbubbleplot_eDNA_comname_no_elasmo, units = c("in"), width = 7, height = 12, dpi = 300)
+```
 
 
 
 #  Import and prepare the data from trawls 
 
 ## Import Trawl Master sheet
+**CHANGE TO USING FILTERED TRAWL DATA- DOESN'T INCLUDE NON-TARGET MIFISH-PRIMER SPECIES (CRABS AND ELASMOBRANCHS). also instead of abundance, it's CPUE**
 
 ```{r}
 # import 4th sheet from  Excel file which contains morphometric data for each individual collected for every date
