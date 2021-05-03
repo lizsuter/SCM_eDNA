@@ -131,7 +131,10 @@ taxonomy_matrix <- as.matrix(taxonomy[,2:9])
 rownames(taxonomy_matrix) <- taxonomy$ASV_ID 
 TAX	=	tax_table(taxonomy_matrix)
 
-META	=	sample_data(data.frame(metadata, row.names = metadata$`SampleID`))
+# select only the metada rows with eDNA samples
+metadata_edna <- metadata %>% filter(!is.na(SampleID))
+
+META	=	sample_data(data.frame(metadata_edna, row.names = metadata_edna$`SampleID`))
 ```
 
 
@@ -199,7 +202,7 @@ nrow(tax_table(ps)) # number of ASVs left
 378 ASVs still remain...
 
 
-Also check class Mammalia, to see if contamination or real:
+Also check class Mammalia, to see if they are contamination or real:
 ```{r}
 tax_table(subset_taxa(ps, class == 'Mammalia'))
 ```
@@ -256,34 +259,35 @@ ps <- subset_samples(ps, !SampleID == "T1PosCon" & !SampleID == "T2PosCon" & !Sa
 ps
 ```
 
-47 samples remaining with 368 ASVs
+47 samples remaining with 368 unique ASVs
 
 
 And lastly, correct some taxonomy: **First* according to Sara, Engraulis encrasicolus (European anchovy) and Engraulis mordax should be Anchoa mitchilli (Bay anchovy):
 
 ```{r}
 tax_table(ps) <- gsub(tax_table(ps), pattern = "Engraulis encrasicolus", replacement = "Anchoa mitchilli")  
-
 tax_table(ps) <- gsub(tax_table(ps), pattern = "Engraulis mordax", replacement = "Anchoa mitchilli")  
-
 ```
 
-**Second** the Fourhorn sculpin (Myoxocephalus quadricornis) is actually an Arctic species. This ASV has 100% PID and 100% query cover to Myoxocephalus quadricornis & Myoxocephalus scorpius (another Arctic species) and 99.4% PID, 100% query cover to Myoxocephalus aenaeus. This latter one is actually the regional species, so change this ASV name to this one:
+
+**Second** the Fourhorn sculpin (Myoxocephalus quadricornis) is actually an Arctic species. This ASV has 100% PID and 100% query cover to Myoxocephalus quadricornis & Myoxocephalus scorpius (another Arctic species) and 99.4% PID, 100% query cover to Myoxocephalus aenaeus. This latter one is actually the regional species, so this is more likely to be the identity:
 ```{r}
 tax_table(ps) <- gsub(tax_table(ps), pattern = "Myoxocephalus quadricornis", replacement = "Myoxocephalus aenaeus") 
 tax_table(ps) <- gsub(tax_table(ps), pattern = "Fourhorn sculpin", replacement = "Grubby sculpin") 
 ```
 
-**Third** Scomber japonicus, the chub mackerel, is only found in the Indo-Pacific. While this is a commercial product and could be here due to sewage, it is more likely the Scomber colias (Atlantic chub mackerel), which is found regionally in the open ocean Atlantic. The blast hit to Scomber japonicus has PID of 100% and query cover of 100% while the similarity to Scomber colias 100% query cover/ 99.41% PID.
+
+**Third** Scomber japonicus, the chub mackerel, is only found in the Indo-Pacific. While this is a commercial product and could be here due to sewage, it is more likely the Scomber colias (Atlantic chub mackerel), which is found regionally (in the open ocean Atlantic). The blast hit to Scomber japonicus has PID of 100% and query cover of 100% while the similarity to Scomber colias 100% query cover/ 99.41% PID.
 
 ```{r}
 tax_table(ps) <- gsub(tax_table(ps), pattern = "Scomber japonicus", replacement = "Scomber colias") 
 tax_table(ps) <- gsub(tax_table(ps), pattern = "Chub mackerel", replacement = "Atlantic chub mackerel") 
-
 ```
 
 
-
+```{r}
+ps
+```
 
 47 samples remainwith 368 unique ASVs
 
@@ -486,51 +490,31 @@ ggsave(filename = "Figures/speciesbubbleplot_eDNA_comname_no_elasmo.eps", plot =
 
 #  Import and prepare the data from trawls 
 
-## Import Trawl Master sheet
-**CHANGE TO USING FILTERED TRAWL DATA- DOESN'T INCLUDE NON-TARGET MIFISH-PRIMER SPECIES (CRABS AND ELASMOBRANCHS). also instead of abundance, it's CPUE**
+## Import Trawl data
+These have been quality controlled by Sara to remove non-MiFISh species (invertebrates, elasmobranchs) and also to normalize for effort. So the unit is CPUE (catch per unit effort)
 
 ```{r}
-# import 4th sheet from  Excel file which contains morphometric data for each individual collected for every date
-trawl_master <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",4)
-trawl_master
+# Import
+trawl_CPUE <- read_excel("Trawl CPUE no elasmobranch_mod.xlsx")
 
-# and import 6th sheet which is station info
-stations <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",6)
-stations
+# Pull out species names
+trawl_CPUE_names <- colnames(trawl_CPUE)[3:dim(trawl_CPUE)[2]]
 
-```
+# Change format to long with species as rows
+trawl_CPUE <- pivot_longer(trawl_CPUE,cols = colnames(trawl_CPUE)[3:dim(trawl_CPUE)[2]],names_to = "Species", values_to = "CPUE")
 
-## Convert to count table
-Make an equivalent to an OTU table, grouping by date and location and representing counts for every unique species
+# Link station metadata with trawl CPUE data
+trawl_CPUE <- left_join(trawl_CPUE, metadata, by = c("Datecode", "Station"))
 
-```{r}
-trawl_counts <- trawl_master %>%
-  group_by(DATECODE, STATION_NO, CommonName) %>%
-  tally(name = "count")
-
-trawl_counts
-```
-
-and link station names instead of numbers to count table
-```{r}
-trawl_counts <- left_join(trawl_counts, stations, by = "STATION_NO")
-trawl_counts
-```
-
-Remove 09/16/20 since there is no equivalent eDNA from that date
-```{r}
-trawl_counts <- trawl_counts %>%
-  filter(DATECODE != "20200916")
-
-trawl_counts
+trawl_CPUE
 ```
 
 
 # Abundance plots Trawls
 
 ```{r}
-speciesbubbleplot_trawl_comname <- ggplot(trawl_counts, aes(x = STATION_NA, y = fct_rev(CommonName), color = STATION_NA)) + 
-  geom_point(aes(size = log10(count), fill = STATION_NA), color = "black", pch = 21)+
+speciesbubbleplot_trawl_comname <- ggplot(trawl_CPUE, aes(x = Station, y = fct_rev(Species), color = Station)) + 
+  geom_point(aes(size = log10(CPUE), fill = Station), color = "black", pch = 21)+
   scale_size(range = c(1,15)) +
   scale_size_area(breaks = c(.01,.1, .3, .5, 1, 3), max_size = 6)+
   xlab("")+
@@ -541,7 +525,7 @@ speciesbubbleplot_trawl_comname <- ggplot(trawl_counts, aes(x = STATION_NA, y = 
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) +
-  facet_grid(DATECODE~BAYSIDE, scales = "free", space = "free", drop= TRUE)
+  facet_grid(Datecode~Bayside, scales = "free", space = "free", drop= TRUE)
 
 speciesbubbleplot_trawl_comname
 ```
@@ -554,6 +538,8 @@ ggsave(filename = "Figures/speciesbubbleplot_trawl_comname.eps", plot = speciesb
 
 
 # Abundance Plots Compare Trawl and eDNA
+
+##STOPPED HERE MAY 3RD. KEEP FIXIN SYNTAC BASED ON NEW CPUE TABLE
 
 Count unique species across all stations, grouped by date, for each method (trawl, eDNA)
 ```{r}
