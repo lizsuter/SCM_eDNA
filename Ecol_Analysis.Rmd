@@ -1,7 +1,7 @@
 ---
 title: "Processing Results from DADA2 to make plots, do some statistics"
 author: "Liz Suter"
-date: "April 23, 2021"
+date: "May 4, 2021"
 output: html_notebook
 editor_options: 
   chunk_output_type: inline
@@ -490,12 +490,43 @@ ggsave(filename = "Figures/speciesbubbleplot_eDNA_comname_no_elasmo.eps", plot =
 
 #  Import and prepare the data from trawls 
 
-## Import Trawl data
+## Import Trawl Count Data
+```{r}
+# import 4th sheet from  Excel file which contains morphometric data for each individual collected for every date
+trawl_master <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",4)
+trawl_master
+# and import 6th sheet which is station info
+stations <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",6)
+stations
+```
+
+Make an equivalent to an OTU table, grouping by date and location and representing counts for every unique species
+```{r}
+trawl_counts <- trawl_master %>%
+  group_by(DATECODE, STATION_NO, CommonName) %>%
+  tally(name = "count")
+trawl_counts
+```
+
+and link station names to count table by matching to station number
+```{r}
+trawl_counts <- left_join(trawl_counts, stations, by = "STATION_NO")
+trawl_counts
+```
+
+Remove 09/16/20 since there is no equivalent eDNA from that date
+```{r}
+trawl_counts <- trawl_counts %>%
+  filter(DATECODE != "20200916")
+```
+
+
+## Import CPUE data
 These have been quality controlled by Sara to remove non-MiFISh species (invertebrates, elasmobranchs) and also to normalize for effort. So the unit is CPUE (catch per unit effort)
 
 ```{r}
 # Import
-trawl_CPUE <- read_excel("Trawl CPUE no elasmobranch_mod.xlsx")
+trawl_CPUE <- read_excel("Trawl CPUE no elasmobranch_mod.xlsx", 1)
 
 # Pull out species names
 trawl_CPUE_names <- colnames(trawl_CPUE)[3:dim(trawl_CPUE)[2]]
@@ -509,17 +540,89 @@ trawl_CPUE <- left_join(trawl_CPUE, metadata, by = c("Datecode", "Station"))
 trawl_CPUE
 ```
 
-
 # Abundance plots Trawls
 
+## Bubble plots- Abundances
+
 ```{r}
-speciesbubbleplot_trawl_comname <- ggplot(trawl_CPUE, aes(x = Station, y = fct_rev(Species), color = Station)) + 
-  geom_point(aes(size = log10(CPUE), fill = Station), color = "black", pch = 21)+
+speciesbubbleplot_trawl_comname <- ggplot(trawl_counts, aes(x = STATION_NA, y = fct_rev(CommonName), color = STATION_NA)) + 
+  geom_point(aes(size = log10(count), fill = STATION_NA), color = "black", pch = 21)+
   scale_size(range = c(1,15)) +
-  scale_size_area(breaks = c(.01,.1, .3, .5, 1, 3), max_size = 6)+
+  scale_size_area(breaks = c(log10(1), log10(2), log10(5), log10(10), log10(25), log10(100)), max_size = 6, labels = c("1","2","5","10","25","100"))+
   xlab("")+
   ylab("")+
-  labs(size="Log(counts)", fill = "Station")+
+  labs(size="Abundance", fill = "Station")+
+  theme_bw() +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  facet_grid(DATECODE~BAYSIDE, scales = "free", space = "free", drop= TRUE)
+
+speciesbubbleplot_trawl_comname
+
+```
+
+Export figure
+```{r}
+ggsave(filename = "Figures/speciesbubbleplot_trawl_abundance_comname.eps", plot = speciesbubbleplot_trawl_comname, units = c("in"), width = 6.75, height = 13, dpi = 300)
+```
+
+
+
+### Filter out non-target-MiFISH species
+To make a fair comparison, filter out the species from the trawl data that are not targetted by the eDNA MiFISH primers (invertebrates and elasmobrachs)
+```{r}
+# Import the list of species that are OK for comparison
+MiFISH_targets <- read_excel("Trawl CPUE no elasmobranch_mod.xlsx",2)
+MiFISH_targets
+```
+
+Join to trawl data and filter
+```{r}
+trawl_counts_MiFISHonly <- left_join(MiFISH_targets,trawl_counts, by = "CommonName")
+trawl_counts_MiFISHonly
+```
+Reduced the number of rows from 363 to 244.
+
+
+Plot another bubble plot with only abundance of MiFISh species from the trawl
+```{r}
+speciesbubbleplot_trawl_comname_MiFISHonly <- ggplot(trawl_counts_MiFISHonly, aes(x = STATION_NA, y = fct_rev(CommonName), color = STATION_NA)) + 
+  geom_point(aes(size = log10(count), fill = STATION_NA), color = "black", pch = 21)+
+  scale_size(range = c(1,15)) +
+  scale_size_area(breaks = c(log10(1), log10(2), log10(5), log10(10), log10(25), log10(100)), max_size = 6, labels = c("1","2","5","10","25","100"))+
+  xlab("")+
+  ylab("")+
+  labs(size="Abundance", fill = "Station")+
+  theme_bw() +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  facet_grid(DATECODE~BAYSIDE, scales = "free", space = "free", drop= TRUE)
+
+speciesbubbleplot_trawl_comname_MiFISHonly
+```
+
+Export figure
+```{r}
+ggsave(filename = "Figures/speciesbubbleplot_trawl_abundance_comname_MiFISHonly.eps", plot = speciesbubbleplot_trawl_comname_MiFISHonly, units = c("in"), width = 6.75, height = 10, dpi = 300)
+```
+
+
+
+
+## Bubble plots - CPUE
+
+```{r}
+speciesbubbleplot_trawl_CPUE_comname <- ggplot(trawl_CPUE, aes(x = Station, y = fct_rev(Species), color = Station)) + 
+  geom_point(aes(size = log10(CPUE), fill = Station), color = "black", pch = 21)+
+  scale_size(range = c(1,15)) +
+  scale_size_area(breaks = c(log10(1), log10(2), log10(5), log10(10), log10(25), log10(100)), max_size = 6, labels = c("1","2","5","10","25","100"))+
+  xlab("")+
+  ylab("")+
+  labs(size="CPUE", fill = "Station")+
   theme_bw() +
   scale_fill_brewer(palette="Paired") +
   theme(axis.title.x=element_blank(),
@@ -527,29 +630,49 @@ speciesbubbleplot_trawl_comname <- ggplot(trawl_CPUE, aes(x = Station, y = fct_r
         axis.ticks.x=element_blank()) +
   facet_grid(Datecode~Bayside, scales = "free", space = "free", drop= TRUE)
 
-speciesbubbleplot_trawl_comname
+speciesbubbleplot_trawl_CPUE_comname
 ```
 
 
 Export figure
 ```{r}
-ggsave(filename = "Figures/speciesbubbleplot_trawl_comname.eps", plot = speciesbubbleplot_trawl_comname, units = c("in"), width = 6.75, height = 13, dpi = 300)
+ggsave(filename = "Figures/speciesbubbleplot_trawl_CPUE_comname.eps", plot = speciesbubbleplot_trawl_CPUE_comname, units = c("in"), width = 6.75, height = 13, dpi = 300)
 ```
 
+#CONTINUE HERE. MODIFY CPUE DATA SO THE ZEROES ARE NA AND THE SPECIES NAMES ARE NOT ALL CAPS
 
-# Abundance Plots Compare Trawl and eDNA
+# Compare Trawl and eDNA
 
-##STOPPED HERE MAY 3RD. KEEP FIXIN SYNTAC BASED ON NEW CPUE TABLE
+## Species Richness
+Count unique species across all stations, grouped by date, for each method, trawl& eDNA (use filtered trawl data so only comparing MiFISh spp to MiFISh spp).
 
-Count unique species across all stations, grouped by date, for each method (trawl, eDNA)
+First filter out stations from trawl data that were deleted samples from eDNA analysis because of poor sequencing effort.
+Filtered eDNA samples: 
+T1S7 (20200707, CORMORANT POINT)
+T1S8 (20200707, SHINNECOCK HILLS)
+T3S11 (20200805, LITTLE POND)
+T1S2 (20200707, WEST MID BAY)
+T4S5 (20200819, PONQUOGUE BRIDGE)
+
 ```{r}
-trawl_uniques <- trawl_counts %>%
+trawl_counts_MiFISHonly
+
+trawl_counts_MiFISHonly_stationsfiltered <- trawl_counts_MiFISHonly %>%
+  filter(!DATECODE == "20200707" | !STATION_NA == "CORMORANT POINT") %>%
+  filter(!DATECODE == "20200707" | !STATION_NA == "SHINNECOCK HILLS") %>%
+  filter(!DATECODE == "20200805" | !STATION_NA == "LITTLE POND") %>%
+  filter(!DATECODE == "20200707" | !STATION_NA == "WEST MID BAY") %>%
+  filter(!DATECODE == "20200819" | !STATION_NA == "PONQUOGUE BRIDGE")
+
+trawl_counts_MiFISHonly_stationsfiltered
+
+trawl_uniques <- trawl_counts_MiFISHonly_stationsfiltered %>%
   group_by(DATECODE, CommonName) %>%
   summarise(Trawl_Count = sum(count, na.rm=TRUE))
 
 trawl_uniques
 
-eDNA_uniques <- species_df%>%
+eDNA_uniques <- species_df_no_elasmo%>%
   group_by(Datecode, CommonName) %>%
   summarise(eDNA_RelAbun = sum(Abundance, na.rm=TRUE))
 
@@ -590,8 +713,6 @@ species_richness_plot
 ggsave(filename = "Figures/species_richness_plot.eps", plot = species_richness_plot, units = c("in"), width = 4, height = 3, dpi = 300)
 ```
 
-**NOTE** on above- come back and remove trawl samples for which the eDNA samples were removed so that this is a fair comparison. Also remove non-MiFISH species from trawl? Check with Sara
-
 
 
 Sum total number of species across all dates/ stations for entire study
@@ -613,13 +734,13 @@ For each species, plot side-by-side comparison of abundance (summed over whole s
 
 ```{r}
 # First create a custom color scale to make this pretty
-myColors <- colorRampPalette(brewer.pal(11,"Spectral"))(55)
+myColors <- colorRampPalette(brewer.pal(11,"Spectral"))(40)
 names(myColors) <- levels(unique(species_sums_abun_table$CommonName))
 colScale <- scale_colour_manual(name = "CommonName",values = myColors)
 
 species_abun_sum_plot <- ggplot(species_sums_abun_table, aes(x = Abundance, y = reorder(CommonName, Abundance, function(x){sum(x,na.rm = TRUE)}), color = CommonName)) +
   geom_point(size = 5) +
-  facet_wrap(~fct_rev(Method), scales = "free") +
+  facet_wrap(~fct_rev(Method), scales = "free_x") +
   theme_bw() +
   xlab("Abundance") +
   ylab("") + 
@@ -631,7 +752,7 @@ species_abun_sum_plot
 
 Export plot
 ```{r}
-ggsave(filename = "Figures/species_abun_sum_plot.eps", plot = species_abun_sum_plot, units = c("in"), width = 7, height = 8, dpi = 300)
+ggsave(filename = "Figures/species_abun_sum_plot.eps", plot = species_abun_sum_plot, units = c("in"), width = 5, height = 6, dpi = 300)
 ```
 
 
