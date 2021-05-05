@@ -19,6 +19,7 @@ editor_options:
 - [Import and prepare the data from eDNA](#import-and-prepare-the-data-from-edna)
   - [Import metadata](#import-metadata)
   - [Import DADA2 results](#import-dada2-results)
+  - [Make phyloseq object](#make-phyloseq-object)
 - [QC and filtering eDNA dataset](#qc-and-filtering-edna-dataset)
   - [Rarefaction curves](#rarefaction-curves)
   - [Filtering](#filtering)
@@ -26,11 +27,17 @@ editor_options:
 - [Abundance plots eDNA](#abundance-plots-edna)
   - [Abundance at family level](#abundance-at-family-level)
   - [Bubble plots](#bubble-plots)
+    - [Bubble plot without Elasmobranchs](#bubble-plot-without-elasmobranchs)
 - [Import and prepare the data from trawls](#import-and-prepare-the-data-from-trawls)
-  - [Import Trawl Master sheet](#import-trawl-master-sheet)
-  - [Convert to count table](#convert-to-count-table)
+  - [Import Trawl Count Data](#import-trawl-count-data)
+  - [Import CPUE data](#import-cpue-data)
 - [Abundance plots Trawls](#abundance-plots-trawls)
-- [Abundance Plots Compare Trawl and eDNA](#abundance-plots-compare-trawl-and-edna)
+  - [Bubble plots of Counts](#bubble-plots-of-counts)
+    - [Bubble plot without MiFISH species](#bubble-plot-without-mifish-species)
+  - [Bubble plots of CPUE](#bubble-plots-of-cpue)
+- [Compare Trawl and eDNA](#compare-trawl-and-edna)
+ - [Species Richness](#species-richness)
+ - [Species tally across whole study](#species-tally-across-whole-study)
 - [Exploratory Analyses](#exploratory-analyses)
   - [Ordinations on eDNA](#ordinations-on-edna)
       - [PCA](#pca)
@@ -40,6 +47,8 @@ editor_options:
       - [NMDS Jacaard](#nmds-jacaard)
       - [NMDS Bray Curtis](#nmds-bray-curtis)
       - [eDNA Ordinations Summary](#edna-ordinations-summary)
+  - [PCoA with Environmental Variables](#pcoa-with-environmental-variables)
+    - []
       
 <br/>
 
@@ -410,10 +419,13 @@ ggsave(filename = "Figures/speciesbubbleplot_eDNA_comname.eps", plot = speciesbu
 
 
 
-### Filter out Elasmobranchs
+### Bubble plot without Elasmobranchs
 The above look good but they include two elasmobranchs, the dusky smooth-hound shark and cownose ray. While these are probably real, the MiFISH primers don't actually target the elasmobranchs, so we can't trust this assay to fairly represent these non-target species. Filter out and re-make the bubble plots:
 
 ```{r}
+ps_no_elasmo <- subset_taxa(ps, !CommonName == 'Cownose ray')
+ps_no_elasmo <- subset_taxa(ps_no_elasmo, !CommonName =='Dusky smooth-hound shark')
+
 ps_ra_no_elasmo <- subset_taxa(ps_ra, !CommonName == 'Cownose ray')
 ps_ra_no_elasmo <- subset_taxa(ps_ra_no_elasmo, !CommonName =='Dusky smooth-hound shark')
 
@@ -534,6 +546,12 @@ trawl_CPUE_names <- colnames(trawl_CPUE)[3:dim(trawl_CPUE)[2]]
 # Change format to long with species as rows
 trawl_CPUE <- pivot_longer(trawl_CPUE,cols = colnames(trawl_CPUE)[3:dim(trawl_CPUE)[2]],names_to = "Species", values_to = "CPUE")
 
+# Replace zeroes in CPUE with NA 
+trawl_CPUE <- na_if(trawl_CPUE, 0)
+# And drop rows with NA (makes plotting easier)
+trawl_CPUE  <-  drop_na(trawl_CPUE, CPUE)
+
+
 # Link station metadata with trawl CPUE data
 trawl_CPUE <- left_join(trawl_CPUE, metadata, by = c("Datecode", "Station"))
 
@@ -542,7 +560,7 @@ trawl_CPUE
 
 # Abundance plots Trawls
 
-## Bubble plots- Abundances
+## Bubble plots of Counts
 
 ```{r}
 speciesbubbleplot_trawl_comname <- ggplot(trawl_counts, aes(x = STATION_NA, y = fct_rev(CommonName), color = STATION_NA)) + 
@@ -570,7 +588,7 @@ ggsave(filename = "Figures/speciesbubbleplot_trawl_abundance_comname.eps", plot 
 
 
 
-### Filter out non-target-MiFISH species
+### Bubble plot without MiFISH species
 To make a fair comparison, filter out the species from the trawl data that are not targetted by the eDNA MiFISH primers (invertebrates and elasmobrachs)
 ```{r}
 # Import the list of species that are OK for comparison
@@ -613,8 +631,8 @@ ggsave(filename = "Figures/speciesbubbleplot_trawl_abundance_comname_MiFISHonly.
 
 
 
-## Bubble plots - CPUE
-
+## Bubble plots of CPUE
+NOTE: Sara has already filtered the CPUE data to diclude the non-MiFISH species when she calculated CPUE
 ```{r}
 speciesbubbleplot_trawl_CPUE_comname <- ggplot(trawl_CPUE, aes(x = Station, y = fct_rev(Species), color = Station)) + 
   geom_point(aes(size = log10(CPUE), fill = Station), color = "black", pch = 21)+
@@ -632,6 +650,7 @@ speciesbubbleplot_trawl_CPUE_comname <- ggplot(trawl_CPUE, aes(x = Station, y = 
 
 speciesbubbleplot_trawl_CPUE_comname
 ```
+Looks good! Similar to "counts" figure but some adjustments that normalized for trawling time.
 
 
 Export figure
@@ -639,7 +658,6 @@ Export figure
 ggsave(filename = "Figures/speciesbubbleplot_trawl_CPUE_comname.eps", plot = speciesbubbleplot_trawl_CPUE_comname, units = c("in"), width = 6.75, height = 13, dpi = 300)
 ```
 
-#CONTINUE HERE. MODIFY CPUE DATA SO THE ZEROES ARE NA AND THE SPECIES NAMES ARE NOT ALL CAPS
 
 # Compare Trawl and eDNA
 
@@ -728,7 +746,7 @@ species_sums_abun_table <- na_if(species_sums_abun_table,0)
 species_sums_abun_table
 ```
 
-
+## Species tally across whole study
 
 For each species, plot side-by-side comparison of abundance (summed over whole study) using each method
 
@@ -772,7 +790,7 @@ PCA is essentially a type of PCoA  using the Euclidean distance matrix as input.
 First do a **CLR, centered log ratio** transformation of the absolute abundance data (after filtering), as suggested by [Gloor et al. 2017](https://www.frontiersin.org/articles/10.3389/fmicb.2017.02224/full)  
 ```{r}
 # Estimate covariance matrix for CLR-transformed ASV table
-clr_asv_table_ps <- data.frame(compositions::clr(otu_table(ps)))
+clr_asv_table_ps <- data.frame(compositions::clr(otu_table(ps_no_elasmo)))
 ```
 
 
@@ -800,7 +818,7 @@ ggplot(lograt_variances, aes(x = as.numeric(PCaxis), y = PercVar)) +
   labs(x = "PC axis", y = "% Variance", title = "Log-Ratio PCA Screeplot, CLR Tranformation")
 ```
 
-Total variance explained by first three axes= 15.7 + 10.5 + 10.0 = **36.2%**. Since the second and third axes are similar, plot in 3D with 3 axes.
+Total variance explained by first three axes= 15.8 + 10.7 + 10.1 = **36.6%**. Since the second and third axes are similar, plot in 3D with 3 axes.
 
 Visualize the PCA- 
 
@@ -851,8 +869,7 @@ The different distance matrices also tell you a few different things about the d
 Before calculating any distance matrix, do a transformation of the filtered count table. Hellinger transformation is the square root of the relative abundance, so calculate it based on the ps_ra object:
 
 ```{r}
-ps_hellinger <- transform_sample_counts(ps_ra, function(x){sqrt(x)})
-
+ps_hellinger <- transform_sample_counts(ps_ra_no_elasmo, function(x){sqrt(x)})
 ```
 
 
@@ -877,7 +894,7 @@ ggplot(jac_variances, aes(x = as.numeric(PCaxis), y = PercVar)) +
         axis.text.x = element_blank()) +
   labs(x = "PC axis", y = "% Variance", title = "Jaccard PCoA Screeplot")
 ```
-The first two axes (19.0 + 9.6 = 28.6) are OK. But plot the first 3 axes since the 2nd and 3rd explain a similar amount of variance, (19.0 + 9.6 + 8.4 = **37%** total variance explained) 
+The first two axes (19.0 + 9.7 = 28.7) are OK. But plot the first 3 axes since the 2nd and 3rd explain a similar amount of variance, (19.0 + 9.7 + 8.4 = **37.1%** total variance explained) 
 
 Plot in 3D with Plotly
 ```{r}
@@ -912,7 +929,7 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_jacca
 
 <iframe src="Embedded_figures/pcoa_jaccard.html" height="600px" width="100%" style="border:none;"></iframe>
 
-The Jaccard-PCoA shows some separation along axis 2 and axis 3 in East vs West differences.
+The Jaccard-PCoA shows some separation along axis 2 and axis 3 in East vs West differences. Very similar % variance explained to the PCA.
 
 
 ### PCoA Bray Curtis
@@ -991,7 +1008,7 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_bray)
 <iframe src="Embedded_figures/pcoa_bray.html" height="600px" width="100%" style="border:none;"></iframe>
 
 
-These results along axes 1, 2, and 3 are similar to Jaccard, but there is MORE separation along axis 2, indicating that incorporating the differences in abundance helps explain more variance in the dataset.
+These results along axes 1, 2, and 3 are similar to Jaccard, but there is MORE separation along axis 2, indicating that incorporating the differences in abundance helps explain more variance in the dataset. Total variance explained is highest so far.
 
 
 
@@ -1065,7 +1082,6 @@ This is still a **moderately high stress (>0.1)** so should be interpreted with 
 
 ### NMDS Bray Curtis
 
-
 Next try a **Bray-Curis NMDS**, which will represent differences in presence/absence among samples *and* relative abundance, thus emphasizing impacts of highly abundant taxa.
 
 ```{r}
@@ -1098,7 +1114,7 @@ Very similar to Jaccard results. **Moderately high stress (0.15)**
 
 
 ### eDNA Ordinations Summary
-The ordination that explained the most variance in the eDNA dataset was the PCoA using the Bray-Curtis dissimilarity matrix after Hellinger transformation. This is similar to the approach presented in [Lacoursière‐Roussel et al. 2018](https://onlinelibrary.wiley.com/doi/abs/10.1002/ece3.4213).
+The ordination that explained the most variance in the eDNA dataset was the PCoA using the Bray-Curtis dissimilarity matrix after Hellinger transformation. This is similar to the approach presented in [Lacoursière‐Roussel et al. 2018](https://onlinelibrary.wiley.com/doi/abs/10.1002/ece3.4213). Use this representation going forward.
 
 - Next: fit environmental vectors to this ordination to see which can be possibly explain some of the variation among samples and among species.
 
@@ -1115,45 +1131,41 @@ pcoa_bray <- wcmdscale(bray_dmat, eig = TRUE, add = "cailliez")
 # trim metadata to remove samples that were removed during QC
 metadata_ordinations <- metadata[metadata$SampleID %in% sample_data(ps_hellinger)$SampleID,]
 
+# and remove repetitive metadata variables
+metadata_ordinations <- select(metadata_ordinations, -"Year.Trawl#", -Date, -Month, -Year)
+
 # fit environmental factors and save stats output
-pcoa_bray_envfit <- envfit(pcoa_bray, metadata_ordinations)
+pcoa_bray_envfit <- envfit(pcoa_bray, metadata_ordinations, permutations = 1000)
 capture.output(pcoa_bray_envfit, file = "stats_results/pcoa_bray_envfit.txt")
 
-# signficant variables include Datecode (p = 0.029), Month (p = 0.050), Station (p = 0.011), and, less significantly, Habitat (p = 0.086)
-
-# fit the significant variables to the ordination
-pcoa_bray_envfit_datecode <- envfit(pcoa_bray~Datecode+Habitat, data = metadata_ordinations, permutations = 9999)
-
-# plot sig variables ontop of PCoA
-plot(pcoa_bray)
-plot(pcoa_bray_envfit_datecode, col = "black", cex=1.5)
-
-## STOPPED HERE. KEEP EDITING ABOVE
-
-# basic plot
-ordispider(pcoa_bray_envfit)
-
-plot(pcoa_bray)
-plot(pcoa_bray_envfit)
+# Signficant variables include Datecode (p = 0.03197), Station (p = 0.01898), and, less significantly, Habitat (p = 0.08192)
+# Make each of the interesting variables (Datecode and Habitat) their own ordination variables for plotting
+pcoa_bray_envfit_datecode <- envfit(pcoa_bray~Datecode, metadata_ordinations, permutations = 1000)
+pcoa_bray_envfit_habitat <- envfit(pcoa_bray~Habitat, metadata_ordinations, permutations = 1000)
 
 
-# plot from plotly above. Modify to to 2D with same color scheme + vectors
-plot <- plot_ly(pcoa_bray_df, type='scatter3d', mode='markers', 
-                     x=~Dim2, y=~Dim3, z=~Dim1, colors=~brewer.pal(11,'Paired'),
-        color=~Station, symbols = c('circle','diamond'), symbol=~Bayside)%>%  
-  layout(font=list(size=12),
-         title='PCoA Bray-Curtis Distance',
-         scene=list(xaxis=list(title=paste0('Co 2 ',eigenvalues[2],'%'),
-                               showticklabels=FALSE,zerolinecolor='black'),
-                    yaxis=list(title=paste0('Co 3 ',eigenvalues[3],'%'),
-                               showticklabels=FALSE,zerolinecolor='black'),
-                    zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
-                               showticklabels=FALSE,zerolinecolor='black')))
+# plot sig variables, Habitat (qual) and Date (quant) ontop of PCoA
+ordiplot(pcoa_bray, type = "points")
+with(metadata_ordinations, ordihull(pcoa_bray, Habitat))
+plot(pcoa_bray_envfit_datecode, p.max = 0.1)
+
+
+ordiplot(pcoa_bray, type = "points")
+with(metadata_ordinations, plot(scores(pcoa_bray, display='sites'), # identifies coordinates
+pch=c(19,17), col=brewer.pal(11,'Paired'), # assign symbols, colours
+xlab='Dim1', ylab='Dim2')) #
+
+## STOPPED HERE MAY 5TH. Customize plot above. Colors and shapes are prob wrong. Add ordihull/ env vector ontop. Fix color palette to match other plots
+
 ```
 
 
 
+
+
 ------ Fix below after plot above is fixed- Cant use phyloseqs pcoa ordination with cailliez correction
+
+
 
 Check how samples differ in the ordination according to different environmental variables
 
