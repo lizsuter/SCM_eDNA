@@ -1122,106 +1122,79 @@ The ordination that explained the most variance in the eDNA dataset was the PCoA
 
 Recreate, in 2D, the first two axes of the ordination (PCoA with Bray distance matrx/ Hellinger transformation) and use `envfit` from vegan to test and fit environmental variables.
 
-If not making 3D plots, can do this directly in phyloseq (eg. https://www.gdc-docs.ethz.ch/MDA/handouts/MDA20_PhyloseqFormation_Mahendra_Mariadassou.pdf)
+If not making 3D plots, can do this directly in phyloseq ( [example](https://www.gdc-docs.ethz.ch/MDA/handouts/MDA20_PhyloseqFormation_Mahendra_Mariadassou.pdf) ). But phyloseq doesn't allow for calliez correction of PCoA, so instead use example from [G. Simpson](https://fromthebottomoftheheap.net/slides/intro-vegan-webinar-2020/intro-to-vegan.html#1) to fit envfit on top of output from wcmdscale (PCoA in vegan).
 
-
+Prepare the ordination variables
 ```{r}
 pcoa_bray <- wcmdscale(bray_dmat, eig = TRUE, add = "cailliez")
 
 # trim metadata to remove samples that were removed during QC
 metadata_ordinations <- metadata[metadata$SampleID %in% sample_data(ps_hellinger)$SampleID,]
 
-# and remove repetitive metadata variables
+# and remove repetitive metadata variables like Date/ Month/ Year/ Trawl #
 metadata_ordinations <- select(metadata_ordinations, -"Year.Trawl#", -Date, -Month, -Year)
+
+# sort metadata in same order as the distance matrix, bray_dmat
+metadata_ordinations <- metadata_ordinations %>% arrange(factor(SampleID, levels = rownames(otu_table(ps_hellinger))))
+
+# change the column name "Datecode" to "Date" (better for plotting)
+colnames(metadata_ordinations)[2] <- "Date"
 
 # fit environmental factors and save stats output
 pcoa_bray_envfit <- envfit(pcoa_bray, metadata_ordinations, permutations = 1000)
 capture.output(pcoa_bray_envfit, file = "stats_results/pcoa_bray_envfit.txt")
 
-# Signficant variables include Datecode (p = 0.03197), Station (p = 0.01898), and, less significantly, Habitat (p = 0.08192)
-# Make each of the interesting variables (Datecode and Habitat) their own ordination variables for plotting
-pcoa_bray_envfit_datecode <- envfit(pcoa_bray~Datecode, metadata_ordinations, permutations = 1000)
-pcoa_bray_envfit_habitat <- envfit(pcoa_bray~Habitat, metadata_ordinations, permutations = 1000)
+# Signficant variables include Datecode (p = 0.023976), DO (p = 0.000999), Bayside (p = 0.004995), and Station (p = 0.041958)
 
-
-# plot sig variables, Habitat (qual) and Date (quant) ontop of PCoA
-ordiplot(pcoa_bray, type = "points")
-with(metadata_ordinations, ordihull(pcoa_bray, Habitat))
-plot(pcoa_bray_envfit_datecode, p.max = 0.1)
-
-
-ordiplot(pcoa_bray, type = "points")
-with(metadata_ordinations, plot(scores(pcoa_bray, display='sites'), # identifies coordinates
-pch=c(19,17), col=brewer.pal(11,'Paired'), # assign symbols, colours
-xlab='Dim1', ylab='Dim2')) #
-
-## STOPPED HERE MAY 5TH. Customize plot above. Colors and shapes are prob wrong. Add ordihull/ env vector ontop. Fix color palette to match other plots
+# Make each of the interesting variables their own ordination variables for plotting (exclude Station. This will be a color variable anyway and it's not interesting)
+pcoa_bray_envfit_date <- envfit(pcoa_bray~Date, metadata_ordinations, permutations = 1000)
+pcoa_bray_envfit_DO <- envfit(pcoa_bray~DO, metadata_ordinations, permutations = 1000)
+pcoa_bray_envfit_Bayside <- envfit(pcoa_bray~Bayside, metadata_ordinations, permutations = 1000)
 
 ```
 
 
-
-
-
------- Fix below after plot above is fixed- Cant use phyloseqs pcoa ordination with cailliez correction
-
-
-
-Check how samples differ in the ordination according to different environmental variables
-
-### Bayside
+Plot
 ```{r}
-plot_ordination(ps_hellinger, ps_hellinger_bray_pcoa, color = "Bayside") +
-  geom_point(size = 4) +
-  stat_ellipse(aes(group = Bayside)) +
-  ggtitle('Bray Curtis PCoA') +
-  coord_fixed(ratio = 1) +
-  theme_bw()
+# Convert characters in metadata to factors
+metadata_ordinations <- metadata_ordinations %>% mutate_if(sapply(metadata_ordinations, is.character), as.factor)
+with(as.data.frame(metadata_ordinations), levels(Station))
 
-```
-**Summary**: There is overlap of the two, but there are also many EAST samples that fall outside and do no look similar to WEST samples. The transition correlates with axis 2. The WEST samples are more closely clustered together than EAST samples.
+# Define plot parameters
+colvec <- c(brewer.pal(11,'Paired')) # colors of stations
+shapevec <- c(19,18) # shapes indicating Bayside
 
-
-### Habitat 
-```{r}
-plot_ordination(ps_hellinger, ps_hellinger_bray_pcoa, color = "Habitat") +
-  geom_point(size = 4) +
-  stat_ellipse(aes(group = Habitat)) +
-  ggtitle('Bray Curtis PCoA') +
-  coord_fixed(ratio = 1) +
-  theme_bw()
-
-```
-**Summary** there doesn't seem to be any effect of habitat type
-
-
-### Date
-```{r}
-plot_ordination(ps_hellinger, ps_hellinger_bray_pcoa, color = "Date") +
-  geom_point(size = 4) +
-  stat_ellipse(aes(group = Date)) +
-  ggtitle('Bray Curtis PCoA') +
-  coord_fixed(ratio = 1) +
-  theme_bw()
-
-```
-
-**Summary** There seems to be a continuous transition from July 22 to Sept. 2 but isn't parallel to either axis 1 or 2.
+# Set up basic plot
+par(xpd = T, mar = par()$mar + c(0,0,0,8)) # leave space to add legend. xpd = T allows legend to be outside of the plot
+# Add the site scores
+with(metadata_ordinations, plot(scores(pcoa_bray, display = "sites"), col = colvec[Station], pch = shapevec[Bayside], cex = 2, xlab = "Co1 21.1%", ylab = "Co2 11.0%"))
+# Add the date vector
+plot(pcoa_bray_envfit_date, p.max = 0.1, lwd = 2, col = "black")
+# Add the DO vector
+plot(pcoa_bray_envfit_DO, p.max = 0.1, lwd = 2, col = "black")
+# Add the hulls indicating Bayside
+with(metadata_ordinations, ordihull(pcoa_bray, Bayside, lwd = 2, lty = c(3,5), label = FALSE))
+# Add legends
+with(metadata_ordinations, legend(0.77, 0.6, legend = levels(Station), col = colvec, pch = c(19,18,19,19,19,18,19,19,19,18,18), bty = "n", pt.cex = 2, cex = .8))
+legend(0.77, 0.8, c("EAST", "WEST"), col = c("black"), lty = c(3,5), lwd = 2, bty = "n", cex = .8) # Legend for Bayside hull lines- did this manually
 
 
-### Vector fitting of numeric variables
-
-```{r}
-# vegan doesn't do a pcoa. try cmdscale from base R on the bray curtis distance matrix (after hellinger transformation)
-pcoa <- wcmdscale(bray_dmat, eig = TRUE)
-
-eigenvals(pcoa) %>%
-  summary() -> ev
-
-ev
+# Export using base R/ vegan helpers
+setEPS()
+postscript("Figures/pcoa_bray_envfit.eps", width = 7, height = 5)
+par(xpd = T, mar = par()$mar + c(0,0,0,8))
+with(metadata_ordinations, plot(scores(pcoa_bray, display = "sites"), col = colvec[Station], pch = shapevec[Bayside], cex = 2, xlab = "Co1 21.1%", ylab = "Co2 11.0%"))
+plot(pcoa_bray_envfit_date, p.max = 0.1, lwd = 2, col = "black")
+plot(pcoa_bray_envfit_DO, p.max = 0.1, lwd = 2, col = "black")
+with(metadata_ordinations, ordihull(pcoa_bray, Bayside, lwd = 2, lty = c(3,5), label = FALSE))
+with(metadata_ordinations, legend(0.77, 0.6, legend = levels(Station), col = colvec, pch = c(19,18,19,19,19,18,19,19,19,18,18), bty = "n", pt.cex = 2, cex = .8))
+legend(0.77, 0.8, c("EAST", "WEST"), col = c("black"), lty = c(3,5), lwd = 2, bty = "n", cex = .8) 
+dev.off()
 
 ```
 
 
+
+#### Next do ordinations on trawl CPUE data
 
 

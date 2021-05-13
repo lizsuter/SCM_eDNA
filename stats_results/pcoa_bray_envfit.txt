@@ -1,11 +1,11 @@
 
 ***VECTORS
 
-                Dim1     Dim2     r2  Pr(>r)  
-Datecode     0.76578 -0.64310 0.1598 0.03297 *
-DO          -0.04343  0.99906 0.0037 0.92008  
-Salinity     0.17330 -0.98487 0.0260 0.54446  
-Temperature  0.68408  0.72941 0.0335 0.48951  
+                Dim1     Dim2     r2   Pr(>r)    
+Date         0.76578 -0.64310 0.1598 0.027972 *  
+DO           0.48550  0.87423 0.3835 0.000999 ***
+Salinity     0.54905 -0.83579 0.0826 0.156843    
+Temperature  0.99957  0.02933 0.0319 0.482517    
 ---
 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 Permutation: free
@@ -15,76 +15,76 @@ Number of permutations: 1000
 
 Centroids:
                            Dim1    Dim2
-SampleIDT1S1            -0.5067 -0.0053
-SampleIDT1S10            0.0637  0.2302
-SampleIDT1S11            0.0653  0.5372
-SampleIDT1S3            -0.1239  0.2305
-SampleIDT1S5            -0.2638 -0.0702
-SampleIDT1S6            -0.4593 -0.3295
-SampleIDT1S9            -0.3069 -0.1297
-SampleIDT2S1            -0.3988  0.1746
-SampleIDT2S10           -0.0604  0.6076
-SampleIDT2S11           -0.3179  0.1951
-SampleIDT2S2             0.6779 -0.0717
-SampleIDT2S3            -0.1223 -0.0136
-SampleIDT2S4            -0.2841 -0.2394
-SampleIDT2S5            -0.4546 -0.3244
-SampleIDT2S6            -0.3010  0.2896
-SampleIDT2S9            -0.2694  0.1508
-SampleIDT3S1             0.6739 -0.0661
-SampleIDT3S10           -0.1450  0.7168
-SampleIDT3S2            -0.3251 -0.1876
-SampleIDT3S3            -0.1483 -0.0045
-SampleIDT3S4            -0.1963 -0.3229
-SampleIDT3S5            -0.5046 -0.2606
-SampleIDT3S6            -0.0497  0.2523
-SampleIDT3S7            -0.3822 -0.1647
-SampleIDT3S8             0.5416  0.0858
-SampleIDT3S9            -0.1644  0.6901
-SampleIDT4S1            -0.3615 -0.1317
-SampleIDT4S10            0.2316  0.1551
-SampleIDT4S11            0.6035  0.0250
-SampleIDT4S2             0.3188 -0.2236
-SampleIDT4S3             0.3777 -0.2482
-SampleIDT4S4             0.4241 -0.2753
-SampleIDT4S6            -0.3953 -0.2292
-SampleIDT4S7             0.6866 -0.0798
-SampleIDT4S8             0.1588 -0.3424
-SampleIDT4S9             0.6742 -0.0773
-SampleIDT5S1            -0.3820 -0.2205
-SampleIDT5S10            0.4027  0.0492
-SampleIDT5S11           -0.0340  0.1491
-SampleIDT5S2             0.1853 -0.1255
-SampleIDT5S3            -0.2756 -0.0451
-SampleIDT5S4             0.1633 -0.1139
-SampleIDT5S5            -0.2151 -0.3365
-SampleIDT5S6             0.3056 -0.1974
-SampleIDT5S7             0.3768  0.1024
-SampleIDT5S8             0.5728 -0.0842
-SampleIDT5S9            -0.0562  0.2794
-BaysideEAST              0.0105  0.0652
-BaysideWEST             -0.0169 -0.1050
-StationCORMORANT POINT   0.2271 -0.0474
-StationDUNE ROAD        -0.0585 -0.0162
-StationEAST MID BAY     -0.0245  0.1827
-StationINLET            -0.1799 -0.0428
-StationLITTLE POND       0.0792  0.2266
-StationPINE NECK        -0.1950 -0.0498
-StationPONQUOGUE BRIDGE -0.3595 -0.2479
-StationSHINNECOCK HILLS  0.4244 -0.1136
-StationSOUTH GRASS       0.0985  0.3518
-StationWEST MID BAY      0.2142 -0.1521
-StationWEST TIANA        0.0267 -0.2379
-HabitatMUD               0.0072 -0.0483
-HabitatSAND             -0.1547 -0.0915
-HabitatSEAGRASS          0.1036  0.0955
+SampleIDT1S1            -0.2638 -0.0702
+SampleIDT1S10           -0.5067 -0.0053
+SampleIDT1S11           -0.1239  0.2305
+SampleIDT1S3            -0.4593 -0.3295
+SampleIDT1S5            -0.3069 -0.1297
+SampleIDT1S6             0.0637  0.2302
+SampleIDT1S9             0.0653  0.5372
+SampleIDT2S1            -0.1223 -0.0136
+SampleIDT2S10           -0.3988  0.1746
+SampleIDT2S11            0.6779 -0.0717
+SampleIDT2S2            -0.2841 -0.2394
+SampleIDT2S3            -0.4546 -0.3244
+SampleIDT2S4            -0.3010  0.2896
+SampleIDT2S5            -0.2694  0.1508
+SampleIDT2S6            -0.0604  0.6076
+SampleIDT2S9            -0.3179  0.1951
+SampleIDT3S1            -0.3251 -0.1876
+SampleIDT3S10            0.6739 -0.0661
+SampleIDT3S2            -0.1483 -0.0045
+SampleIDT3S3            -0.1963 -0.3229
+SampleIDT3S4            -0.5046 -0.2606
+SampleIDT3S5            -0.0497  0.2523
+SampleIDT3S6            -0.3822 -0.1647
+SampleIDT3S7             0.5416  0.0858
+SampleIDT3S8            -0.1644  0.6901
+SampleIDT3S9            -0.1450  0.7168
+SampleIDT4S1             0.3777 -0.2482
+SampleIDT4S10           -0.3615 -0.1317
+SampleIDT4S11            0.3188 -0.2236
+SampleIDT4S2             0.4241 -0.2753
+SampleIDT4S3            -0.3953 -0.2292
+SampleIDT4S4             0.6866 -0.0798
+SampleIDT4S6             0.1588 -0.3424
+SampleIDT4S7             0.6742 -0.0773
+SampleIDT4S8             0.2316  0.1551
+SampleIDT4S9             0.6035  0.0250
+SampleIDT5S1            -0.2756 -0.0451
+SampleIDT5S10           -0.3820 -0.2205
+SampleIDT5S11            0.1853 -0.1255
+SampleIDT5S2             0.1633 -0.1139
+SampleIDT5S3            -0.2151 -0.3365
+SampleIDT5S4             0.3056 -0.1974
+SampleIDT5S5             0.3768  0.1024
+SampleIDT5S6             0.5728 -0.0842
+SampleIDT5S7            -0.0562  0.2794
+SampleIDT5S8             0.4027  0.0492
+SampleIDT5S9            -0.0340  0.1491
+BaysideEAST              0.0686  0.1030
+BaysideWEST             -0.1105 -0.1660
+StationCORMORANT POINT   0.3865  0.0960
+StationDUNE ROAD        -0.3441 -0.3085
+StationEAST MID BAY      0.0344  0.3246
+StationINLET             0.0706  0.0493
+StationLITTLE POND       0.2645 -0.0476
+StationPINE NECK        -0.1218 -0.1129
+StationPONQUOGUE BRIDGE -0.0623  0.0940
+StationSHINNECOCK HILLS  0.1566  0.2981
+StationSOUTH GRASS      -0.1950 -0.0498
+StationWEST MID BAY      0.0387 -0.1583
+StationWEST TIANA        0.0466 -0.0621
+HabitatMUD              -0.0587  0.0325
+HabitatSAND             -0.0837  0.0480
+HabitatSEAGRASS          0.0967 -0.0547
 
 Goodness of fit:
-             r2  Pr(>r)  
-SampleID 1.0000 1.00000  
-Bayside  0.0342 0.19680  
-Station  0.3595 0.01798 *
-Habitat  0.0912 0.08292 .
+             r2   Pr(>r)   
+SampleID 1.0000 1.000000   
+Bayside  0.1202 0.007992 **
+Station  0.3383 0.038961 * 
+Habitat  0.0452 0.386613   
 ---
 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 Permutation: free
