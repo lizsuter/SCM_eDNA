@@ -538,7 +538,7 @@ trawl_master
 
 
 
-Make an equivalent to an OTU table, grouping by date and location and representing counts for every unique species, summing the total length for each trawl/ species (in order to do allometric correction later)
+Make a count table from trawl_master, grouping by date and location, summing the counts for every unique species, and summing the total length for each trawl/ species 
 ```{r}
 trawl_counts <- trawl_master %>%
   group_by(DATECODE, STATION_NA, STATION_NO, Trawl_Min, BAYSIDE, CommonName, SheddingFactor) %>%
@@ -561,7 +561,7 @@ trawl_counts <- trawl_counts %>%
 trawl_counts
 ```
 
-Calculate the metric that Sara came up with: sum(total length) * shedding factor. This takes into account the sums of length of each fish for each date/trawl and multiplies by a factor determined by how much they shed
+Calculate the metric that Sara came up with: sum(total length) * shedding factor. This is a correction that takes into account the sums of length of each fish for each date/trawl and multiplies by a factor determined by how much they shed
 ```{r}
 trawl_counts <- trawl_counts %>%
   mutate (AllometricSheddingCPUE = TotalLength*SheddingFactor)
@@ -647,6 +647,7 @@ First, remove the species from the trawls that are not targeted in the eDNA assa
 ```{r}
 # import a list of the "OK" species that are targetted by MiFISh primers
 mifish_spp <- read_excel("Trawl CPUE no elasmobranch_mod.xlsx",2)
+mifish_spp
 
 # filter rows from trawl_counts if the spp name doesn't match the MiFISh list
 trawl_counts <- right_join(trawl_counts, mifish_spp, by = "CommonName")
@@ -654,23 +655,19 @@ trawl_counts
 ```
 
 Then filter out stations from trawl data that were removed samples from eDNA analysis because of poor sequencing effort.
-Filtered eDNA samples: 
-T1S7 (20200707, CORMORANT POINT)
-T1S8 (20200707, SHINNECOCK HILLS)
-T3S11 (20200805, LITTLE POND)
-T1S2 (20200707, WEST MID BAY)
-T4S5 (20200819, PONQUOGUE BRIDGE)
 
 ```{r}
-trawl_counts <- trawl_counts %>%
-  filter(!DATECODE == "20200707" | !STATION_NA == "CORMORANT POINT") %>%
-  filter(!DATECODE == "20200707" | !STATION_NA == "SHINNECOCK HILLS") %>%
-  filter(!DATECODE == "20200805" | !STATION_NA == "LITTLE POND") %>%
-  filter(!DATECODE == "20200707" | !STATION_NA == "WEST MID BAY") %>%
-  filter(!DATECODE == "20200819" | !STATION_NA == "PONQUOGUE BRIDGE")
+# Grab the eDNA sample IDs that remained after filtering
+sampleIDs <- as_data_frame(sample_data(ps_no_elasmo)) %>% 
+  select(SampleID, Datecode, Station)
 
+# Filter trawl_counts to only include those same samples
+trawl_counts <- inner_join(trawl_counts, sampleIDs, by = c("DATECODE" = "Datecode", "STATION_NA" = "Station"))
 trawl_counts
+```
 
+Make abundance table of each species across whole study
+```{r}
 # sum hits across all dates in trawl
 trawl_uniques <- trawl_counts %>%
   group_by(DATECODE, CommonName) %>%
@@ -1190,14 +1187,100 @@ dev.off()
 
 ## Ordinations on CPUE
 
+### Prepare the data
+
 Does CPUE data need to be transformed before ordinations?
 
 - [Sabel et al. 2020](https://onlinelibrary.wiley.com/doi/full/10.1111/fwb.13501) do a log-transformation, then center and standardize counts before PCA
 - [Gothues and Able 2020](https://onlinelibrary.wiley.com/doi/full/10.1111/rec.13163?casa_token=UeUAUp99yecAAAAA%3AXuJGz6ailZDq5BW27vlrRudui96Dcv-jGjAOV0USSAYpiFbr3oM7Y1GQgblJjO4n1VhqhdhgeC9vt8E) also log transform ( log(y+1) ) and center and standardize to units of standard deviation before PCA. They also excluded rare species (less than 3 occurences at all sites)
 - [Wegsheider et al. 2020](https://onlinelibrary.wiley.com/doi/full/10.1002/rra.3615?casa_token=-EV_HEpQ3sgAAAAA%3ALqeKBsNjFyz6t4KVrgFrelKTOj_mAjaVCLx-fo07yVdp_n_R0pKMr4u2G7Enqgu-Dd1Etl9lkc5I2KU) do no transformation, as far as I can tell, before PCoA
 - [Mehdi et al. 2021](https://www.sciencedirect.com/science/article/pii/S0048969720369618?casa_token=RiOhMzLOKkoAAAAA:uq-0S9llQLsAHA22HlIXL_6JRPgePwzvGzkF2xGzXwG-BM5pcyC9CuY9Vwa7IZG9Twb-XQWTYw#f0015) use a PCoA without transformation but with a Bray-Curtis dissimilarity matrix
+- Sara recommends at least a log-transformation to normalize for zeroes and high abundance/ schooling fish
 
 
+Make a table, in the style of OTU tables (samples in rows/ species in columms), of the CPUE data. Trawl_counts has already been filtered so that it only includes those samples and species that are relevant to the eDNA study
+```{r}
+CPUE_table <- trawl_counts %>%
+  as_data_frame()%>%
+  select(SampleID, CommonName, CPUE) %>%
+  pivot_wider(names_from = CommonName, values_from = CPUE) 
+CPUE_table
+```
 
-## CONTINUE HERE. TRAWL_COUNTS IS READY TO GO WITH ALL ALLOMETRIC CORRECTED DATA
+
+Transformation by log transformation (log(x+1) in order to account for zeroes)
+```{r}
+# set NAs to zeroes
+CPUE_table[is.na(CPUE_table)] <- 0
+
+# log transform
+CPUE_table_transform <- CPUE_table
+CPUE_table_transform[,2:length(CPUE_table)] <- log10(CPUE_table[,2:length(CPUE_table)]+1)
+
+CPUE_table_transform
+```
+
+
+### PCA- continue here
+Generate the PCA and visualize axes
+```{r}
+log_transform_pca <- prcomp(CPUE_table_transform) 
+
+
+## CONTINUE HERE- NEED TO MODIFY CLASS OF THE TABLE IN ORDER TO USE
+## MAY 21
+
+# Visual representation with a screeplot
+lograt_variances <- as.data.frame(lograt_pca$sdev^2/sum(lograt_pca$sdev^2)) %>% #Extract axes
+  # Format to plot
+  select(PercVar = 'lograt_pca$sdev^2/sum(lograt_pca$sdev^2)') %>% 
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+head(lograt_variances)
+
+# Plot screeplot
+ggplot(lograt_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Log-Ratio PCA Screeplot, CLR Tranformation")
+```
+
+Total variance explained by first three axes= 15.8 + 10.7 + 10.1 = **36.6%**. Since the second and third axes are similar, plot in 3D with 3 axes.
+
+Visualize the PCA- 
+
+```{r}
+# Extract variances from the clr pca
+pca_lograt_frame <- data.frame(lograt_pca$x) %>% 
+  rownames_to_column(var = "SampleID")
+
+# Merge metadata into the pcoa data table
+pca_lograt_frame <- left_join(pca_lograt_frame, metadata, by = "SampleID")
+head(pca_lograt_frame)
+
+# Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
+eigenvalues<-round(lograt_variances[,2], digits = 4)*100
+
+# Plotly - 3-D
+pca_lograt <- plot_ly(pca_lograt_frame, type='scatter3d', mode='markers',
+        x=~PC1,y=~PC2,z=~PC3,colors=~brewer.pal(11,'Paired'),
+        color=~Station, symbols = c('circle','diamond'), symbol=~Bayside)%>%
+  layout(font=list(size=12),
+         title='CLR-Euclidean PCA',
+         scene=list(xaxis=list(title=paste0('Co 2 ',eigenvalues[2],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    yaxis=list(title=paste0('Co 3 ',eigenvalues[3],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
+                               showticklabels=FALSE,zerolinecolor='black')))
+# pca_lograt
+
+# save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt.html", selfcontained = F))
+
+ 
+```
 
