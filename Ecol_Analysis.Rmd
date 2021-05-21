@@ -1,7 +1,7 @@
 ---
 title: "Processing Results from DADA2 to make plots, do some statistics"
 author: "Liz Suter"
-date: "May 4, 2021"
+date: "May 21, 2021"
 output: html_notebook
 editor_options: 
   chunk_output_type: inline
@@ -30,12 +30,11 @@ editor_options:
     - [Bubble plot without Elasmobranchs](#bubble-plot-without-elasmobranchs)
 - [Import and prepare the data from trawls](#import-and-prepare-the-data-from-trawls)
   - [Import Trawl Count Data](#import-trawl-count-data)
-  - [Import CPUE data](#import-cpue-data)
 - [Abundance plots Trawls](#abundance-plots-trawls)
   - [Bubble plots of Counts](#bubble-plots-of-counts)
-    - [Bubble plot without MiFISH species](#bubble-plot-without-mifish-species)
   - [Bubble plots of CPUE](#bubble-plots-of-cpue)
 - [Compare Trawl and eDNA](#compare-trawl-and-edna)
+ - [Prepare the data](#prepare-the-data)
  - [Species Richness](#species-richness)
  - [Species tally across whole study](#species-tally-across-whole-study)
 - [Exploratory Analyses](#exploratory-analyses)
@@ -48,7 +47,7 @@ editor_options:
       - [NMDS Bray Curtis](#nmds-bray-curtis)
       - [eDNA Ordinations Summary](#edna-ordinations-summary)
   - [PCoA with Environmental Variables](#pcoa-with-environmental-variables)
-    - []
+  - [Ordinations on CPUE](#ordinations-on-cpue)
       
 <br/>
 
@@ -506,57 +505,80 @@ ggsave(filename = "Figures/speciesbubbleplot_eDNA_comname_no_elasmo.eps", plot =
 ```{r}
 # import 4th sheet from  Excel file which contains morphometric data for each individual collected for every date
 trawl_master <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",4)
-trawl_master
+
 # and import 6th sheet which is station info
 stations <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",6)
-stations
+
+# and import shedding factor- an index determined by Sara that indicates how much the species sheds when handled (and therefore how likely it is to shed cells in water)
+sheddingfactor <- read_excel("Allometric correction_mod.xlsx",5)
+
+# Group station name and shedding factor into trawl_master table
+trawl_master <- left_join(trawl_master, stations, by = "STATION_NO")
+trawl_master <- left_join(trawl_master, sheddingfactor, by = "COMMONNAME")
+
+trawl_master
 ```
 
-Make an equivalent to an OTU table, grouping by date and location and representing counts for every unique species
+Import station/ trawl information
+```{r}
+station_data <- read_excel("Trawls MASTER 2020 _mod_ES.xlsx",1)
+station_data
+
+# Filter to only include DATECODE, Station_NO, Trawl_Min
+station_data <- station_data %>% select(DATECODE, STATION_NO, Trawl_Min)
+station_data
+```
+
+Combine station information to trawl_master in order to have the duration of each trawl (for calculating CPUE)
+```{r}
+trawl_master <- left_join(trawl_master, station_data, by = c("DATECODE", "STATION_NO"))
+trawl_master
+```
+
+
+
+
+Make an equivalent to an OTU table, grouping by date and location and representing counts for every unique species, summing the total length for each trawl/ species (in order to do allometric correction later)
 ```{r}
 trawl_counts <- trawl_master %>%
-  group_by(DATECODE, STATION_NO, CommonName) %>%
+  group_by(DATECODE, STATION_NA, STATION_NO, Trawl_Min, BAYSIDE, CommonName, SheddingFactor) %>%
+  summarize(TotalLength = sum(TL_CM))
+
+
+counts <- trawl_master %>%
+  group_by(DATECODE, STATION_NA, STATION_NO, CommonName) %>%
   tally(name = "count")
+
+trawl_counts <- left_join(trawl_counts, counts, by = c ("DATECODE", "STATION_NA", "STATION_NO", "CommonName"))
 trawl_counts
 ```
 
-and link station names to count table by matching to station number
+
+Calculate CPUE and put in new column. CPUE is the count divided by trawl time (in minutes)
 ```{r}
-trawl_counts <- left_join(trawl_counts, stations, by = "STATION_NO")
+trawl_counts <- trawl_counts %>%
+  mutate (CPUE = count / Trawl_Min)
 trawl_counts
 ```
 
-Remove 09/16/20 since there is no equivalent eDNA from that date
+Calculate the metric that Sara came up with: sum(total length) * shedding factor. This takes into account the sums of length of each fish for each date/trawl and multiplies by a factor determined by how much they shed
+```{r}
+trawl_counts <- trawl_counts %>%
+  mutate (AllometricSheddingCPUE = TotalLength*SheddingFactor)
+trawl_counts
+```
+
+
+Remove 09/16/20 since there is no equivalent eDNA from that date. Also remove station 13 since no equivalent eDNA samples were collected there
 ```{r}
 trawl_counts <- trawl_counts %>%
   filter(DATECODE != "20200916")
+
+trawl_counts <- trawl_counts %>%
+  filter(STATION_NO != "13")
 ```
 
 
-## Import CPUE data
-These have been quality controlled by Sara to remove non-MiFISh species (invertebrates, elasmobranchs) and also to normalize for effort. So the unit is CPUE (catch per unit effort)
-
-```{r}
-# Import
-trawl_CPUE <- read_excel("Trawl CPUE no elasmobranch_mod.xlsx", 1)
-
-# Pull out species names
-trawl_CPUE_names <- colnames(trawl_CPUE)[3:dim(trawl_CPUE)[2]]
-
-# Change format to long with species as rows
-trawl_CPUE <- pivot_longer(trawl_CPUE,cols = colnames(trawl_CPUE)[3:dim(trawl_CPUE)[2]],names_to = "Species", values_to = "CPUE")
-
-# Replace zeroes in CPUE with NA 
-trawl_CPUE <- na_if(trawl_CPUE, 0)
-# And drop rows with NA (makes plotting easier)
-trawl_CPUE  <-  drop_na(trawl_CPUE, CPUE)
-
-
-# Link station metadata with trawl CPUE data
-trawl_CPUE <- left_join(trawl_CPUE, metadata, by = c("Datecode", "Station"))
-
-trawl_CPUE
-```
 
 # Abundance plots Trawls
 
@@ -588,54 +610,13 @@ ggsave(filename = "Figures/speciesbubbleplot_trawl_abundance_comname.eps", plot 
 
 
 
-### Bubble plot without MiFISH species
-To make a fair comparison, filter out the species from the trawl data that are not targetted by the eDNA MiFISH primers (invertebrates and elasmobrachs)
-```{r}
-# Import the list of species that are OK for comparison
-MiFISH_targets <- read_excel("Trawl CPUE no elasmobranch_mod.xlsx",2)
-MiFISH_targets
-```
-
-Join to trawl data and filter
-```{r}
-trawl_counts_MiFISHonly <- left_join(MiFISH_targets,trawl_counts, by = "CommonName")
-trawl_counts_MiFISHonly
-```
-Reduced the number of rows from 363 to 244.
-
-
-Plot another bubble plot with only abundance of MiFISh species from the trawl
-```{r}
-speciesbubbleplot_trawl_comname_MiFISHonly <- ggplot(trawl_counts_MiFISHonly, aes(x = STATION_NA, y = fct_rev(CommonName), color = STATION_NA)) + 
-  geom_point(aes(size = log10(count), fill = STATION_NA), color = "black", pch = 21)+
-  scale_size(range = c(1,15)) +
-  scale_size_area(breaks = c(log10(1), log10(2), log10(5), log10(10), log10(25), log10(100)), max_size = 6, labels = c("1","2","5","10","25","100"))+
-  xlab("")+
-  ylab("")+
-  labs(size="Abundance", fill = "Station")+
-  theme_bw() +
-  scale_fill_brewer(palette="Paired") +
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  facet_grid(DATECODE~BAYSIDE, scales = "free", space = "free", drop= TRUE)
-
-speciesbubbleplot_trawl_comname_MiFISHonly
-```
-
-Export figure
-```{r}
-ggsave(filename = "Figures/speciesbubbleplot_trawl_abundance_comname_MiFISHonly.eps", plot = speciesbubbleplot_trawl_comname_MiFISHonly, units = c("in"), width = 6.75, height = 10, dpi = 300)
-```
-
-
 
 
 ## Bubble plots of CPUE
-NOTE: Sara has already filtered the CPUE data to diclude the non-MiFISH species when she calculated CPUE
+
 ```{r}
-speciesbubbleplot_trawl_CPUE_comname <- ggplot(trawl_CPUE, aes(x = Station, y = fct_rev(Species), color = Station)) + 
-  geom_point(aes(size = log10(CPUE), fill = Station), color = "black", pch = 21)+
+speciesbubbleplot_trawl_CPUE_comname <- ggplot(trawl_counts, aes(x = STATION_NA, y = fct_rev(CommonName), color = STATION_NA)) + 
+  geom_point(aes(size = log10(CPUE), fill = STATION_NA), color = "black", pch = 21)+
   scale_size(range = c(1,15)) +
   scale_size_area(breaks = c(log10(1), log10(2), log10(5), log10(10), log10(25), log10(100)), max_size = 6, labels = c("1","2","5","10","25","100"))+
   xlab("")+
@@ -646,7 +627,7 @@ speciesbubbleplot_trawl_CPUE_comname <- ggplot(trawl_CPUE, aes(x = Station, y = 
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) +
-  facet_grid(Datecode~Bayside, scales = "free", space = "free", drop= TRUE)
+  facet_grid(DATECODE~BAYSIDE, scales = "free", space = "free", drop= TRUE)
 
 speciesbubbleplot_trawl_CPUE_comname
 ```
@@ -661,10 +642,18 @@ ggsave(filename = "Figures/speciesbubbleplot_trawl_CPUE_comname.eps", plot = spe
 
 # Compare Trawl and eDNA
 
-## Species Richness
-Count unique species across all stations, grouped by date, for each method, trawl& eDNA (use filtered trawl data so only comparing MiFISh spp to MiFISh spp).
+## Prepare the data
+First, remove the species from the trawls that are not targeted in the eDNA assay (invertebrates and elasmobranchs)
+```{r}
+# import a list of the "OK" species that are targetted by MiFISh primers
+mifish_spp <- read_excel("Trawl CPUE no elasmobranch_mod.xlsx",2)
 
-First filter out stations from trawl data that were deleted samples from eDNA analysis because of poor sequencing effort.
+# filter rows from trawl_counts if the spp name doesn't match the MiFISh list
+trawl_counts <- right_join(trawl_counts, mifish_spp, by = "CommonName")
+trawl_counts
+```
+
+Then filter out stations from trawl data that were removed samples from eDNA analysis because of poor sequencing effort.
 Filtered eDNA samples: 
 T1S7 (20200707, CORMORANT POINT)
 T1S8 (20200707, SHINNECOCK HILLS)
@@ -673,27 +662,25 @@ T1S2 (20200707, WEST MID BAY)
 T4S5 (20200819, PONQUOGUE BRIDGE)
 
 ```{r}
-trawl_counts_MiFISHonly
-
-trawl_counts_MiFISHonly_stationsfiltered <- trawl_counts_MiFISHonly %>%
+trawl_counts <- trawl_counts %>%
   filter(!DATECODE == "20200707" | !STATION_NA == "CORMORANT POINT") %>%
   filter(!DATECODE == "20200707" | !STATION_NA == "SHINNECOCK HILLS") %>%
   filter(!DATECODE == "20200805" | !STATION_NA == "LITTLE POND") %>%
   filter(!DATECODE == "20200707" | !STATION_NA == "WEST MID BAY") %>%
   filter(!DATECODE == "20200819" | !STATION_NA == "PONQUOGUE BRIDGE")
 
-trawl_counts_MiFISHonly_stationsfiltered
+trawl_counts
 
-trawl_uniques <- trawl_counts_MiFISHonly_stationsfiltered %>%
+# sum hits across all dates in trawl
+trawl_uniques <- trawl_counts %>%
   group_by(DATECODE, CommonName) %>%
-  summarise(Trawl_Count = sum(count, na.rm=TRUE))
-
+  summarise(Trawl_Count = sum(count, na.rm=TRUE), Trawl_CPUE = sum(CPUE, na.rm = TRUE), Trawl_TL = sum(TotalLength, na.rm = TRUE), Trawl_Allometric_Shedding = sum(AllometricSheddingCPUE, na.rm = TRUE))
 trawl_uniques
 
+# sum hits across all dates in eDNA
 eDNA_uniques <- species_df_no_elasmo%>%
   group_by(Datecode, CommonName) %>%
   summarise(eDNA_RelAbun = sum(Abundance, na.rm=TRUE))
-
 eDNA_uniques
 
 # Combine into one dataframe
@@ -702,6 +689,9 @@ trawl_eDNA_abun_table <- full_join(trawl_uniques, eDNA_uniques, by=c("CommonName
 trawl_eDNA_abun_table
 ```
 
+
+## Species Richness
+Count unique species across all stations, grouped by date, for each method, trawl& eDNA (use filtered trawl data so only comparing MiFISh spp to MiFISh spp).
 
 Count total number of species from each method for each date
 ```{r}
@@ -737,7 +727,10 @@ Sum total number of species across all dates/ stations for entire study
 ```{r}
 species_sums_abun_table <- trawl_eDNA_abun_table %>%
   group_by(CommonName) %>%
-  summarise(Trawl = sum(Trawl_Count, na.rm=TRUE), eDNA = (sum(eDNA_RelAbun, na.rm=TRUE))) %>%
+  summarise(CPUE = sum(Trawl_CPUE, na.rm = TRUE), 
+            "Total Length (TL)" = sum(Trawl_TL, na.rm = TRUE), 
+            "TL * Shedding Factor" = sum(Trawl_Allometric_Shedding, na.rm = TRUE), 
+            eDNA = sum(eDNA_RelAbun, na.rm=TRUE)) %>%
   pivot_longer(!CommonName, names_to = "Method", values_to = "Abundance")
   
 # turn zeroes to NA so they don't plot 
@@ -758,7 +751,7 @@ colScale <- scale_colour_manual(name = "CommonName",values = myColors)
 
 species_abun_sum_plot <- ggplot(species_sums_abun_table, aes(x = Abundance, y = reorder(CommonName, Abundance, function(x){sum(x,na.rm = TRUE)}), color = CommonName)) +
   geom_point(size = 5) +
-  facet_wrap(~fct_rev(Method), scales = "free_x") +
+  facet_wrap(~factor(Method, levels = c('CPUE','Total Length (TL)','TL * Shedding Factor','eDNA')), scales = "free_x", ncol = 4) +
   theme_bw() +
   xlab("Abundance") +
   ylab("") + 
@@ -770,7 +763,7 @@ species_abun_sum_plot
 
 Export plot
 ```{r}
-ggsave(filename = "Figures/species_abun_sum_plot.eps", plot = species_abun_sum_plot, units = c("in"), width = 5, height = 6, dpi = 300)
+ggsave(filename = "Figures/species_abun_sum_plot.eps", plot = species_abun_sum_plot, units = c("in"), width = 10, height = 6, dpi = 300)
 ```
 
 
@@ -1195,6 +1188,16 @@ dev.off()
 
 
 
-#### Next do ordinations on trawl CPUE data
+## Ordinations on CPUE
 
+Does CPUE data need to be transformed before ordinations?
+
+- [Sabel et al. 2020](https://onlinelibrary.wiley.com/doi/full/10.1111/fwb.13501) do a log-transformation, then center and standardize counts before PCA
+- [Gothues and Able 2020](https://onlinelibrary.wiley.com/doi/full/10.1111/rec.13163?casa_token=UeUAUp99yecAAAAA%3AXuJGz6ailZDq5BW27vlrRudui96Dcv-jGjAOV0USSAYpiFbr3oM7Y1GQgblJjO4n1VhqhdhgeC9vt8E) also log transform ( log(y+1) ) and center and standardize to units of standard deviation before PCA. They also excluded rare species (less than 3 occurences at all sites)
+- [Wegsheider et al. 2020](https://onlinelibrary.wiley.com/doi/full/10.1002/rra.3615?casa_token=-EV_HEpQ3sgAAAAA%3ALqeKBsNjFyz6t4KVrgFrelKTOj_mAjaVCLx-fo07yVdp_n_R0pKMr4u2G7Enqgu-Dd1Etl9lkc5I2KU) do no transformation, as far as I can tell, before PCoA
+- [Mehdi et al. 2021](https://www.sciencedirect.com/science/article/pii/S0048969720369618?casa_token=RiOhMzLOKkoAAAAA:uq-0S9llQLsAHA22HlIXL_6JRPgePwzvGzkF2xGzXwG-BM5pcyC9CuY9Vwa7IZG9Twb-XQWTYw#f0015) use a PCoA without transformation but with a Bray-Curtis dissimilarity matrix
+
+
+
+## CONTINUE HERE. TRAWL_COUNTS IS READY TO GO WITH ALL ALLOMETRIC CORRECTED DATA
 
