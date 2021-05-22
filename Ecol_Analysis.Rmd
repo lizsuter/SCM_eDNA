@@ -1,7 +1,7 @@
 ---
 title: "Processing Results from DADA2 to make plots, do some statistics"
 author: "Liz Suter"
-date: "May 21, 2021"
+date: "May 22, 2021"
 output: html_notebook
 editor_options: 
   chunk_output_type: inline
@@ -333,13 +333,13 @@ family_barplot <- plot_bar(familyGlommed_RA, x = "Sample", fill = "family")
 family_barplot
 
 ```
-**NOTES** for Sara
+**NOTES**
 
 - There are some samples, (T1S3, T1S6, T2S11, T3S10, T3S4, T3S5, T3S9, T4S4, T4S7, T5S7) which are composed almost exclusively of 1 family. This might be fine, but I'm not used to seeing this with prokaroytic data. Just want to check with you
 
 
 
-Agglomerate by species to see if I get the same 38 unique species Sara sees:
+Agglomerate by species to take a look at the unique species
 
 ```{r}
 speciesGlommed_RA = tax_glom(ps_ra, "CommonName")
@@ -544,7 +544,6 @@ trawl_counts <- trawl_master %>%
   group_by(DATECODE, STATION_NA, STATION_NO, Trawl_Min, BAYSIDE, CommonName, SheddingFactor) %>%
   summarize(TotalLength = sum(TL_CM))
 
-
 counts <- trawl_master %>%
   group_by(DATECODE, STATION_NA, STATION_NO, CommonName) %>%
   tally(name = "count")
@@ -561,10 +560,23 @@ trawl_counts <- trawl_counts %>%
 trawl_counts
 ```
 
-Calculate the metric that Sara came up with: sum(total length) * shedding factor. This is a correction that takes into account the sums of length of each fish for each date/trawl and multiplies by a factor determined by how much they shed
+
+Calculate the metric that Sara came up with: sum(total length) * shedding factor. This is a correction of the abundance that takes into account the sums of length of each fish for each date/trawl and multiplies by a factor determined by how much they shed. 
 ```{r}
 trawl_counts <- trawl_counts %>%
-  mutate (AllometricSheddingCPUE = TotalLength*SheddingFactor)
+  mutate ("TLxSF" = TotalLength*SheddingFactor)
+trawl_counts
+```
+
+Then also divide the TotalLength and SumTL*SF by the trawl time in order to account for effort (similar to CPUE)
+
+```{r}
+trawl_counts <- trawl_counts %>%
+  mutate ("TLPUE" = TotalLength/Trawl_Min)
+
+trawl_counts <- trawl_counts %>%
+  mutate ("TLxSF.PUE" = TLxSF/Trawl_Min)
+
 trawl_counts
 ```
 
@@ -671,7 +683,7 @@ Make abundance table of each species across whole study
 # sum hits across all dates in trawl
 trawl_uniques <- trawl_counts %>%
   group_by(DATECODE, CommonName) %>%
-  summarise(Trawl_Count = sum(count, na.rm=TRUE), Trawl_CPUE = sum(CPUE, na.rm = TRUE), Trawl_TL = sum(TotalLength, na.rm = TRUE), Trawl_Allometric_Shedding = sum(AllometricSheddingCPUE, na.rm = TRUE))
+  summarise(Trawl_Count = sum(count, na.rm=TRUE), Trawl_CPUE = sum(CPUE, na.rm = TRUE), Trawl_TLPUE = sum(TLPUE, na.rm = TRUE), Trawl_Allometric_Shedding = sum(TLxSF.PUE, na.rm = TRUE))
 trawl_uniques
 
 # sum hits across all dates in eDNA
@@ -725,8 +737,8 @@ Sum total number of species across all dates/ stations for entire study
 species_sums_abun_table <- trawl_eDNA_abun_table %>%
   group_by(CommonName) %>%
   summarise(CPUE = sum(Trawl_CPUE, na.rm = TRUE), 
-            "Total Length (TL)" = sum(Trawl_TL, na.rm = TRUE), 
-            "TL * Shedding Factor" = sum(Trawl_Allometric_Shedding, na.rm = TRUE), 
+            "Total Length (TL) PUE" = sum(Trawl_TLPUE, na.rm = TRUE), 
+            "TL * Shedding Factor PUE" = sum(Trawl_Allometric_Shedding, na.rm = TRUE), 
             eDNA = sum(eDNA_RelAbun, na.rm=TRUE)) %>%
   pivot_longer(!CommonName, names_to = "Method", values_to = "Abundance")
   
@@ -748,7 +760,7 @@ colScale <- scale_colour_manual(name = "CommonName",values = myColors)
 
 species_abun_sum_plot <- ggplot(species_sums_abun_table, aes(x = Abundance, y = reorder(CommonName, Abundance, function(x){sum(x,na.rm = TRUE)}), color = CommonName)) +
   geom_point(size = 5) +
-  facet_wrap(~factor(Method, levels = c('CPUE','Total Length (TL)','TL * Shedding Factor','eDNA')), scales = "free_x", ncol = 4) +
+  facet_wrap(~factor(Method, levels = c('CPUE','Total Length (TL) PUE','TL * Shedding Factor PUE','eDNA')), scales = "free_x", ncol = 4) +
   theme_bw() +
   xlab("Abundance") +
   ylab("") + 
@@ -847,7 +859,7 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt
 
 <iframe src="Embedded_figures/pca_lograt.html" height="600px" width="100%" style="border:none;"></iframe>
 
-**Summary** The CLR-Euclidean PCA reveals there is some separation according to East vs West. The PCA only explains ~36% of the variance so keep going with different ordinations to see if there is a better representation
+**Summary** The CLR-Euclidean PCA reveals there is some separation according to East vs West. The first 3 PCs only explain ~36% of the variance so keep going with different ordinations to see if there is a better representation
 
 
 
@@ -998,7 +1010,7 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_bray)
 <iframe src="Embedded_figures/pcoa_bray.html" height="600px" width="100%" style="border:none;"></iframe>
 
 
-These results along axes 1, 2, and 3 are similar to Jaccard, but there is MORE separation along axis 2, indicating that incorporating the differences in abundance helps explain more variance in the dataset. Total variance explained is highest so far.
+These results along axes 1, 2, and 3 are similar to Jaccard, but there is more separation along axis 2, indicating that incorporating the differences in abundance helps explain more variance in the dataset. Total variance explained is highest so far.
 
 
 
@@ -1108,6 +1120,7 @@ The ordination that explained the most variance in the eDNA dataset was the PCoA
 
 - Next: fit environmental vectors to this ordination to see which can be possibly explain some of the variation among samples and among species.
 
+
 ## PCoA with Environmental Variables
 
 Recreate, in 2D, the first two axes of the ordination (PCoA with Bray distance matrx/ Hellinger transformation) and use `envfit` from vegan to test and fit environmental variables.
@@ -1144,7 +1157,7 @@ pcoa_bray_envfit_Bayside <- envfit(pcoa_bray~Bayside, metadata_ordinations, perm
 ```
 
 
-Plot
+Plot in 2D
 ```{r}
 # Convert characters in metadata to factors
 metadata_ordinations <- metadata_ordinations %>% mutate_if(sapply(metadata_ordinations, is.character), as.factor)
@@ -1198,7 +1211,7 @@ Does CPUE data need to be transformed before ordinations?
 - Sara recommends at least a log-transformation to normalize for zeroes and high abundance/ schooling fish
 
 
-Make a table, in the style of OTU tables (samples in rows/ species in columms), of the CPUE data. Trawl_counts has already been filtered so that it only includes those samples and species that are relevant to the eDNA study
+Make a table of CPUE in the style of OTU tables (samples in rows/ species in columms), of the CPUE data. Trawl_counts has already been filtered so that it only includes those samples and species that are relevant to the eDNA study
 ```{r}
 CPUE_table <- trawl_counts %>%
   as_data_frame()%>%
@@ -1224,31 +1237,36 @@ CPUE_table_transform
 ### PCA- continue here
 Generate the PCA and visualize axes
 ```{r}
-log_transform_pca <- prcomp(CPUE_table_transform) 
+CPUE_table_transform <- data.frame(CPUE_table_transform)
+rownames(CPUE_table_transform) <- c(CPUE_table_transform$SampleID)
+CPUE_table_transform <- CPUE_table_transform[,-1]
 
-
-## CONTINUE HERE- NEED TO MODIFY CLASS OF THE TABLE IN ORDER TO USE
-## MAY 21
-
+log_transform_pca <- prcomp(CPUE_table_transform)
+                            
 # Visual representation with a screeplot
-lograt_variances <- as.data.frame(lograt_pca$sdev^2/sum(lograt_pca$sdev^2)) %>% #Extract axes
+log_transform_variances <- as.data.frame(log_transform_pca$sdev^2/sum(log_transform_pca$sdev^2)) %>% #Extract axes
   # Format to plot
-  select(PercVar = 'lograt_pca$sdev^2/sum(lograt_pca$sdev^2)') %>% 
+  select(PercVar = 'log_transform_pca$sdev^2/sum(log_transform_pca$sdev^2)') %>% 
   rownames_to_column(var = "PCaxis") %>% 
   data.frame
-head(lograt_variances)
+head(log_transform_variances)
 
 # Plot screeplot
-ggplot(lograt_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+ggplot(log_transform_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
   geom_bar(stat = "identity", fill = "grey", color = "black") +
   theme_minimal() +
   theme(axis.title = element_text(color = "black", face = "bold", size = 10),
         axis.text.y = element_text(color = "black", face = "bold"),
         axis.text.x = element_blank()) +
-  labs(x = "PC axis", y = "% Variance", title = "Log-Ratio PCA Screeplot, CLR Tranformation")
+  labs(x = "PC axis", y = "% Variance", title = "Log-Transformed PCA Screeplot, CPUE")
 ```
 
-Total variance explained by first three axes= 15.8 + 10.7 + 10.1 = **36.6%**. Since the second and third axes are similar, plot in 3D with 3 axes.
+Total variance explained by first three axes= 28.6 + 19.5 + 13.7 = **61.8%**. 
+
+##STOPPED HERE
+CONSIDER WHETHER TO PLOT IN 2D OR 3D
+
+Since the second and third axes are similar, plot in 3D with 3 axes.
 
 Visualize the PCA- 
 

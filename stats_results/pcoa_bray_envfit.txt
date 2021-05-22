@@ -2,10 +2,10 @@
 ***VECTORS
 
                 Dim1     Dim2     r2   Pr(>r)    
-Date         0.76578 -0.64310 0.1598 0.027972 *  
+Date         0.76578 -0.64310 0.1598 0.017982 *  
 DO           0.48550  0.87423 0.3835 0.000999 ***
-Salinity     0.54905 -0.83579 0.0826 0.156843    
-Temperature  0.99957  0.02933 0.0319 0.482517    
+Salinity     0.54905 -0.83579 0.0826 0.162837    
+Temperature  0.99957  0.02933 0.0319 0.480519    
 ---
 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 Permutation: free
@@ -82,9 +82,9 @@ HabitatSEAGRASS          0.0967 -0.0547
 Goodness of fit:
              r2   Pr(>r)   
 SampleID 1.0000 1.000000   
-Bayside  0.1202 0.007992 **
-Station  0.3383 0.038961 * 
-Habitat  0.0452 0.386613   
+Bayside  0.1202 0.004995 **
+Station  0.3383 0.044955 * 
+Habitat  0.0452 0.361638   
 ---
 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 Permutation: free
