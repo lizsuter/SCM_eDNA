@@ -581,13 +581,10 @@ trawl_counts
 ```
 
 
-Remove 09/16/20 since there is no equivalent eDNA from that date. Also remove station 13 since no equivalent eDNA samples were collected there
+Remove 09/16/20 since there is no equivalent eDNA from that date
 ```{r}
 trawl_counts <- trawl_counts %>%
   filter(DATECODE != "20200916")
-
-trawl_counts <- trawl_counts %>%
-  filter(STATION_NO != "13")
 ```
 
 
@@ -851,13 +848,13 @@ pca_lograt <- plot_ly(pca_lograt_frame, type='scatter3d', mode='markers',
 # pca_lograt
 
 # save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
-withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt.html", selfcontained = F))
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt_eDNA.html", selfcontained = F))
 
  
 ```
 
 
-<iframe src="Embedded_figures/pca_lograt.html" height="600px" width="100%" style="border:none;"></iframe>
+<iframe src="Embedded_figures/pca_lograt_eDNA.html" height="600px" width="100%" style="border:none;"></iframe>
 
 **Summary** The CLR-Euclidean PCA reveals there is some separation according to East vs West. The first 3 PCs only explain ~36% of the variance so keep going with different ordinations to see if there is a better representation
 
@@ -926,10 +923,10 @@ pcoa_jaccard <- plot_ly(pcoa_jac_df, type='scatter3d', mode='markers',
 # pcoa_jaccard
 
 # save figure in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
-withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_jaccard), file="pcoa_jaccard.html", selfcontained = F))
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_jaccard), file="pcoa_jaccard_eDNA.html", selfcontained = F))
 ```
 
-<iframe src="Embedded_figures/pcoa_jaccard.html" height="600px" width="100%" style="border:none;"></iframe>
+<iframe src="Embedded_figures/pcoa_jaccard_eDNA.html" height="600px" width="100%" style="border:none;"></iframe>
 
 The Jaccard-PCoA shows some separation along axis 2 and axis 3 in East vs West differences. Very similar % variance explained to the PCA.
 
@@ -1004,10 +1001,10 @@ pcoa_bray <- plot_ly(pcoa_bray_df, type='scatter3d', mode='markers',
 # pcoa_bray
 
 # save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
-withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_bray), file="pcoa_bray.html", selfcontained = F))
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_bray), file="pcoa_bray_eDNA.html", selfcontained = F))
 ```
 
-<iframe src="Embedded_figures/pcoa_bray.html" height="600px" width="100%" style="border:none;"></iframe>
+<iframe src="Embedded_figures/pcoa_bray_eDNA.html" height="600px" width="100%" style="border:none;"></iframe>
 
 
 These results along axes 1, 2, and 3 are similar to Jaccard, but there is more separation along axis 2, indicating that incorporating the differences in abundance helps explain more variance in the dataset. Total variance explained is highest so far.
@@ -1045,7 +1042,7 @@ nmds_aitch <- ggplot(euc_nmds_df,aes(x = MDS1, y = MDS2, color = Station, shape 
 
 nmds_aitch
 
-ggsave("figures/nmds_aitch.eps",nmds_aitch, width = 7, height = 5, units = c("in"))
+ggsave("figures/nmds_aitch_eDNA.eps",nmds_aitch, width = 7, height = 5, units = c("in"))
 ```
 The above has a relatively **high stress (>0.2)** so should be interpreted with caution. But it does show some separation East vs West along NMDS 1.
 
@@ -1078,7 +1075,7 @@ nmds_jaccard <- ggplot(jac_nmds_df,aes(x = MDS1, y = MDS2, color = Station, shap
 
 nmds_jaccard
 
-ggsave("figures/nmds_jaccard.eps",nmds_jaccard, width = 7, height = 5, units = c("in"))
+ggsave("figures/nmds_jaccard_eDNA.eps",nmds_jaccard, width = 7, height = 5, units = c("in"))
 ```
 This is still a **moderately high stress (>0.1)** so should be interpreted with caution. Similar to Aitchison-distance nMDS but there is a little more separation of East vs West on NMDS 2 axis.
 
@@ -1110,7 +1107,7 @@ nmds_bray <- ggplot(bray_nmds_df,aes(x = MDS1, y = MDS2, color = Station, shape 
 
 nmds_bray
 
-ggsave("figures/nmds_bray.eps",nmds_bray, width = 7, height = 5, units = c("in"))
+ggsave("figures/nmds_bray_eDNA.eps",nmds_bray, width = 7, height = 5, units = c("in"))
 ```
 Very similar to Jaccard results. **Moderately high stress (0.15)**
 
@@ -1145,7 +1142,7 @@ colnames(metadata_ordinations)[2] <- "Date"
 
 # fit environmental factors and save stats output
 pcoa_bray_envfit <- envfit(pcoa_bray, metadata_ordinations, permutations = 1000)
-capture.output(pcoa_bray_envfit, file = "stats_results/pcoa_bray_envfit.txt")
+capture.output(pcoa_bray_envfit, file = "stats_results/pcoa_bray_envfit_eDNA.txt")
 
 # Signficant variables include Datecode (p = 0.023976), DO (p = 0.000999), Bayside (p = 0.004995), and Station (p = 0.041958)
 
@@ -1184,7 +1181,7 @@ legend(0.77, 0.8, c("EAST", "WEST"), col = c("black"), lty = c(3,5), lwd = 2, bt
 
 # Export using base R/ vegan helpers
 setEPS()
-postscript("Figures/pcoa_bray_envfit.eps", width = 7, height = 5)
+postscript("Figures/pcoa_bray_envfit_eDNA.eps", width = 7, height = 5)
 par(xpd = T, mar = par()$mar + c(0,0,0,8))
 with(metadata_ordinations, plot(scores(pcoa_bray, display = "sites"), col = colvec[Station], pch = shapevec[Bayside], cex = 2, xlab = "Co1 21.1%", ylab = "Co2 11.0%"))
 plot(pcoa_bray_envfit_date, p.max = 0.1, lwd = 2, col = "black")
@@ -1234,7 +1231,7 @@ CPUE_table_transform
 ```
 
 
-### PCA- continue here
+### PCA
 Generate the PCA and visualize axes
 ```{r}
 CPUE_table_transform <- data.frame(CPUE_table_transform)
@@ -1263,42 +1260,123 @@ ggplot(log_transform_variances, aes(x = as.numeric(PCaxis), y = PercVar)) +
 
 Total variance explained by first three axes= 28.6 + 19.5 + 13.7 = **61.8%**. 
 
-##STOPPED HERE
-CONSIDER WHETHER TO PLOT IN 2D OR 3D
+## COME BACK HERE, CONSIDER WHETHER TO PLOT IN 2D OR 3D
 
 Since the second and third axes are similar, plot in 3D with 3 axes.
 
 Visualize the PCA- 
 
 ```{r}
-# Extract variances from the clr pca
-pca_lograt_frame <- data.frame(lograt_pca$x) %>% 
+# Extract variances from the pca
+pca_logtransform_frame <- data.frame(log_transform_pca$x) %>% 
   rownames_to_column(var = "SampleID")
 
 # Merge metadata into the pcoa data table
-pca_lograt_frame <- left_join(pca_lograt_frame, metadata, by = "SampleID")
-head(pca_lograt_frame)
+pca_logtransform_frame <- left_join(pca_logtransform_frame, metadata, by = "SampleID")
+head(pca_logtransform_frame)
 
 # Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
-eigenvalues<-round(lograt_variances[,2], digits = 4)*100
+eigenvalues<-round(log_transform_variances[,2], digits = 4)*100
 
 # Plotly - 3-D
-pca_lograt <- plot_ly(pca_lograt_frame, type='scatter3d', mode='markers',
+pca_log_transform <- plot_ly(pca_logtransform_frame, type='scatter3d', mode='markers',
         x=~PC1,y=~PC2,z=~PC3,colors=~brewer.pal(11,'Paired'),
         color=~Station, symbols = c('circle','diamond'), symbol=~Bayside)%>%
   layout(font=list(size=12),
-         title='CLR-Euclidean PCA',
+         title='PCA on Log-transformed CPUE',
          scene=list(xaxis=list(title=paste0('Co 2 ',eigenvalues[2],'%'),
                                showticklabels=FALSE,zerolinecolor='black'),
                     yaxis=list(title=paste0('Co 3 ',eigenvalues[3],'%'),
                                showticklabels=FALSE,zerolinecolor='black'),
                     zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
                                showticklabels=FALSE,zerolinecolor='black')))
-# pca_lograt
+# pca_log_transform
 
 # save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
-withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_lograt), file="pca_lograt.html", selfcontained = F))
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_log_transform), file="pca_log_transform_CPUE.html", selfcontained = F))
 
  
 ```
 
+<iframe src="Embedded_figures/pca_log_transform_CPUE.html" height="600px" width="100%" style="border:none;"></iframe>
+
+
+## MAY 22- come back here to PCA above. The PerVar explained is good but the second axis is exagerated by one data point. Look into centering data, as described in several references from [above](#ordinations-on-cpue)
+
+### PCoA Bray Curtis
+
+Next, try a **Bray-Curtis** distance matrix with PCoA (continue to use log transformation). 
+
+NOTE: I need to use a correction here for negative eigenvalues. Read more [here](https://fromthebottomoftheheap.net/slides/intro-vegan-webinar-2020/intro-to-vegan.html#53)
+```{r}
+# Get Bray Curtis distance matrix from log-transformed CPUE data
+bray_dmat<-vegdist(CPUE_table_transform,method="bray") 
+
+# the normal PCoA results in negative eigenvalues, so need correction. use wcmdscale and add cailliez correction
+pcoa_bray <- wcmdscale(bray_dmat, eig = TRUE, add = "cailliez")
+
+# check out summary of PCoA
+eigenvals(pcoa_bray) %>%
+  summary() -> ev
+
+# extract variances and put in tibble
+bray_variances <- NULL
+for (i in 1:length(eigenvals(pcoa_bray))){
+  bray_variances[i] <- eigenvals(pcoa_bray)[i]/sum(eigenvals(pcoa_bray))
+}
+
+# Extract variances from pcoa, from calculated dist. metric
+bray_variances <- tibble(round(bray_variances,3)) %>%
+  select(PercVar = 'round(bray_variances, 3)') %>%
+  rownames_to_column(var = "PCaxis") %>%
+  data.frame
+head(bray_variances)
+
+# Make a screeplot
+ggplot(bray_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Bray-Curtis PCoA Screeplot")
+```
+The first two axes (12.9+11.0+9.9) are not as good as PCA. Total variance explained by first 3 PCs = **33.8%**)
+
+
+
+
+Plot in 3D with Plotly
+```{r}
+# Extract variances from the pcoa
+pcoa_bray_df <- data.frame(pcoa_bray$points) %>% 
+  rownames_to_column(var = "SampleID")
+
+# Merge metadata into the pcoa data table
+pcoa_bray_df <- left_join(pcoa_bray_df, metadata, by = "SampleID")
+head(pcoa_bray_df)
+
+# Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
+eigenvalues<-round(bray_variances[,2], digits = 4)*100
+
+# Plotly - 3-D
+pcoa_bray <- plot_ly(pcoa_bray_df, type='scatter3d', mode='markers', 
+                     x=~Dim2, y=~Dim3, z=~Dim1, colors=~brewer.pal(11,'Paired'),
+        color=~Station, symbols = c('circle','diamond'), symbol=~Bayside)%>%  
+  layout(font=list(size=12),
+         title='PCoA Bray-Curtis Distance on Log-Transformed CPUE',
+         scene=list(xaxis=list(title=paste0('Co 2 ',eigenvalues[2],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    yaxis=list(title=paste0('Co 3 ',eigenvalues[3],'%'),
+                               showticklabels=FALSE,zerolinecolor='black'),
+                    zaxis=list(title=paste0('Co 1 ',eigenvalues[1],'%'),
+                               showticklabels=FALSE,zerolinecolor='black')))
+# pcoa_bray
+
+# save in "Embedded_figures" directory so that it can be hosted at Github and embedded in this notebook
+withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_bray), file="pcoa_bray_CPUE.html", selfcontained = F))
+```
+
+<iframe src="Embedded_figures/pcoa_bray_CPUE.html" height="600px" width="100%" style="border:none;"></iframe>
+
+## STOPPED HERE MAY 22. RE-ASSESS THE PCA AND PCOA ABOVE. MAY NEED CENTERING
