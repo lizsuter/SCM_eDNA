@@ -1,0 +1,90 @@
+
+***VECTORS
+
+                 PC1      PC2     r2 Pr(>r)
+Date        -0.51434  0.85759 0.0876 0.1409
+DO          -0.54921 -0.83568 0.0527 0.3027
+Salinity    -0.80331 -0.59556 0.0263 0.5654
+Temperature -0.80146  0.59804 0.0031 0.9171
+Permutation: free
+Number of permutations: 1000
+
+***FACTORS:
+
+Centroids:
+                            PC1     PC2
+SampleIDT1S1             0.8637  0.2525
+SampleIDT1S10           -0.1869  0.7837
+SampleIDT1S11            1.0770 -3.4731
+SampleIDT1S3             1.2671  0.3193
+SampleIDT1S5             0.5976  0.8921
+SampleIDT1S9             1.1679 -0.4596
+SampleIDT2S1             0.6765 -0.2367
+SampleIDT2S10           -6.6073 -2.9481
+SampleIDT2S11            1.0423 -5.4668
+SampleIDT2S2             0.8958  0.4291
+SampleIDT2S3             1.2269  0.5239
+SampleIDT2S4             1.2000 -0.0615
+SampleIDT2S5             1.0031  0.2399
+SampleIDT2S6             1.2585  0.1309
+SampleIDT2S9             1.2848  0.1070
+SampleIDT3S1             0.7766  0.7187
+SampleIDT3S10           -2.1571 -3.8801
+SampleIDT3S2             1.0746 -0.9225
+SampleIDT3S3            -2.8916  1.4148
+SampleIDT3S4             0.4894 -1.3216
+SampleIDT3S5            -3.2500 -0.7706
+SampleIDT3S6            -0.1937  0.5950
+SampleIDT3S7             0.5633  0.0593
+SampleIDT3S8            -2.5937  6.7069
+SampleIDT3S9             1.0932 -0.6970
+SampleIDT4S1             1.4922  0.2726
+SampleIDT4S10            0.2503  0.7536
+SampleIDT4S11           -0.4829  0.3966
+SampleIDT4S2             0.3734  0.4256
+SampleIDT4S3             0.1933  0.9328
+SampleIDT4S4             1.2743 -0.5281
+SampleIDT4S6             0.8493 -0.7635
+SampleIDT4S7             0.9831  0.4955
+SampleIDT4S8             0.7161  0.7210
+SampleIDT4S9             1.2635 -0.4288
+SampleIDT5S1             1.1980  0.5809
+SampleIDT5S10           -7.4344 -0.0171
+SampleIDT5S11            1.2795  0.5976
+SampleIDT5S2             0.8970  0.4316
+SampleIDT5S3            -1.0108  1.1777
+SampleIDT5S4             0.7118 -0.0801
+SampleIDT5S5            -5.6569  0.3035
+SampleIDT5S6             0.9103  0.7699
+SampleIDT5S7             0.5849  0.2245
+SampleIDT5S8             1.3036  0.6810
+SampleIDT5S9             0.6265  0.1175
+BaysideEAST             -0.3824 -0.1546
+BaysideWEST              0.5949  0.2405
+StationCORMORANT POINT   0.7104  0.2598
+StationDUNE ROAD        -0.2430  0.8737
+StationEAST MID BAY      1.0872 -0.2722
+StationINLET             0.7061  0.1831
+StationLITTLE POND       0.7290 -1.9864
+StationPINE NECK         1.0014  0.3176
+StationPONQUOGUE BRIDGE -1.8266  0.1662
+StationSHINNECOCK HILLS -0.1913  2.7030
+StationSOUTH GRASS      -3.2271 -1.0616
+StationWEST MID BAY      0.8102  0.0909
+StationWEST TIANA        0.9189 -0.4978
+HabitatMUD               0.8821 -0.1379
+HabitatSAND             -0.0654  0.3808
+HabitatSEAGRASS         -0.5308 -0.1579
+
+Goodness of fit:
+             r2   Pr(>r)   
+SampleID 1.0000 1.000000   
+Bayside  0.0377 0.185814   
+Station  0.4267 0.003996 **
+Habitat  0.0571 0.284715   
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+Permutation: free
+Number of permutations: 1000
+
+

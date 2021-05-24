@@ -46,8 +46,10 @@ editor_options:
       - [NMDS Jacaard](#nmds-jacaard)
       - [NMDS Bray Curtis](#nmds-bray-curtis)
       - [eDNA Ordinations Summary](#edna-ordinations-summary)
-  - [PCoA with Environmental Variables](#pcoa-with-environmental-variables)
-  - [Ordinations on CPUE](#ordinations-on-cpue)
+      - [PCoA with Environmental Variables](#pcoa-with-environmental-variables)
+  - [Ordinations on Trawl Data](#ordinations-on-trawl-data)
+    - [Prepare the CPUE data](#prepare-the-cpue-data)
+    - [CPUE PCA](#cpue-pca)
       
 <br/>
 
@@ -1118,7 +1120,7 @@ The ordination that explained the most variance in the eDNA dataset was the PCoA
 - Next: fit environmental vectors to this ordination to see which can be possibly explain some of the variation among samples and among species.
 
 
-## PCoA with Environmental Variables
+### PCoA with Environmental Variables
 
 Recreate, in 2D, the first two axes of the ordination (PCoA with Bray distance matrx/ Hellinger transformation) and use `envfit` from vegan to test and fit environmental variables.
 
@@ -1195,9 +1197,9 @@ dev.off()
 
 
 
-## Ordinations on CPUE
+## Ordinations on Trawl Data
 
-### Prepare the data
+### Prepare the CPUE data
 
 Does CPUE data need to be transformed before ordinations?
 
@@ -1231,14 +1233,24 @@ CPUE_table_transform
 ```
 
 
-### PCA
+Center (around mean) and standardize (by SD) the log-transformed CPUE data, similar to the references above. 
+
+```{r}
+CPUE_table_transform_cen_st <- CPUE_table_transform
+CPUE_table_transform_cen_st[,2:length(CPUE_table_transform)] <- scale(CPUE_table_transform[,2:length(CPUE_table_transform)])
+
+CPUE_table_transform_cen_st
+```
+
+
+### CPUE PCA
 Generate the PCA and visualize axes
 ```{r}
-CPUE_table_transform <- data.frame(CPUE_table_transform)
-rownames(CPUE_table_transform) <- c(CPUE_table_transform$SampleID)
-CPUE_table_transform <- CPUE_table_transform[,-1]
+CPUE_table_transform_cen_st <- data.frame(CPUE_table_transform_cen_st)
+rownames(CPUE_table_transform_cen_st) <- c(CPUE_table_transform_cen_st$SampleID)
+CPUE_table_transform_cen_st <- CPUE_table_transform_cen_st[,-1]
 
-log_transform_pca <- prcomp(CPUE_table_transform)
+log_transform_pca <- prcomp(CPUE_table_transform_cen_st)
                             
 # Visual representation with a screeplot
 log_transform_variances <- as.data.frame(log_transform_pca$sdev^2/sum(log_transform_pca$sdev^2)) %>% #Extract axes
@@ -1258,13 +1270,9 @@ ggplot(log_transform_variances, aes(x = as.numeric(PCaxis), y = PercVar)) +
   labs(x = "PC axis", y = "% Variance", title = "Log-Transformed PCA Screeplot, CPUE")
 ```
 
-Total variance explained by first three axes= 28.6 + 19.5 + 13.7 = **61.8%**. 
+Total variance explained by first 2 axes = 17.5 + 11.3 = **28.8%**. Total variance explained by first three axes= 17.5 + 11.3 + 10.6 = **39.4%**. 
 
-## COME BACK HERE, CONSIDER WHETHER TO PLOT IN 2D OR 3D
-
-Since the second and third axes are similar, plot in 3D with 3 axes.
-
-Visualize the PCA- 
+Visualize the PCA in 3D: 
 
 ```{r}
 # Extract variances from the pca
@@ -1300,15 +1308,33 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_log_tr
 
 <iframe src="Embedded_figures/pca_log_transform_CPUE.html" height="600px" width="100%" style="border:none;"></iframe>
 
-
-## MAY 22- come back here to PCA above. The PerVar explained is good but the second axis is exagerated by one data point. Look into centering data, as described in several references from [above](#ordinations-on-cpue)
-
-### PCoA Bray Curtis
-
-Next, try a **Bray-Curtis** distance matrix with PCoA (continue to use log transformation). 
-
-NOTE: I need to use a correction here for negative eigenvalues. Read more [here](https://fromthebottomoftheheap.net/slides/intro-vegan-webinar-2020/intro-to-vegan.html#53)
+Also plot in 2D 
 ```{r}
+log_transform_frame_2D <- ggplot(pca_logtransform_frame,aes(x = PC1, y = PC2, color = Station, shape = Bayside)) +
+  geom_point(size = 4) +
+  scale_color_brewer(palette="Paired") +
+  theme_bw() +
+  labs(x = paste0('PC1 ', eigenvalues[1], '%'), y = paste0('PC2 ', eigenvalues[2], '%'), title = "PCA on Log-transformed CPUE") +
+  coord_fixed(ratio = 1)
+
+log_transform_frame_2D
+
+ggsave("figures/pca_log_transform_2D.eps",log_transform_frame_2D, width = 7, height = 5, units = c("in"))
+```
+
+
+Summary: The PerVar explained is OK. Try a PCoA
+
+### CPUE PCoA Bray Curtis
+
+Next, try a PCoA. Use the log-transformed abundance matrix to calculate a distance-matrix using the **Bray-Curtis** similarity metric. Then use this as input for PCoA
+
+NOTE: Need to use a correction here for negative eigenvalues
+```{r}
+CPUE_table_transform <- data.frame(CPUE_table_transform)
+rownames(CPUE_table_transform) <- c(CPUE_table$SampleID)
+CPUE_table_transform <- CPUE_table_transform[,-1]
+
 # Get Bray Curtis distance matrix from log-transformed CPUE data
 bray_dmat<-vegdist(CPUE_table_transform,method="bray") 
 
@@ -1341,7 +1367,7 @@ ggplot(bray_variances, aes(x = as.numeric(PCaxis), y = PercVar)) +
         axis.text.x = element_blank()) +
   labs(x = "PC axis", y = "% Variance", title = "Bray-Curtis PCoA Screeplot")
 ```
-The first two axes (12.9+11.0+9.9) are not as good as PCA. Total variance explained by first 3 PCs = **33.8%**)
+The first two axes (12.0+10.3+8.9) are not as good as PCA. Total variance explained by first 3 PCs = **31.2%**)
 
 
 
@@ -1379,4 +1405,87 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pcoa_bray)
 
 <iframe src="Embedded_figures/pcoa_bray_CPUE.html" height="600px" width="100%" style="border:none;"></iframe>
 
-## STOPPED HERE MAY 22. RE-ASSESS THE PCA AND PCOA ABOVE. MAY NEED CENTERING
+Plot in 2D
+```{r}
+pcoa_bray_2D <- ggplot(pcoa_bray_df,aes(x = Dim1, y = Dim2, color = Station, shape = Bayside)) +
+  geom_point(size = 4) +
+  scale_color_brewer(palette="Paired") +
+  theme_bw() +
+  labs(x = paste0('Co 1 ', eigenvalues[1], '%'), y = paste0('Co 2 ', eigenvalues[2], '%'), title = "PCoA on Log-transformed CPUE with Bray-Curtis Dissimilarity") +
+  coord_fixed(ratio = 1)
+
+pcoa_bray_2D
+
+ggsave("figures/pcoa_bray_CPUE_2D.eps",pcoa_bray_2D, width = 7, height = 5, units = c("in"))
+```
+
+### CPUE Ordinations Summary
+Both the PCA and PCoA explain similar percent variances using the first two axes (28.8% for PCA and 22.3%) for PCoA. Continue with both for the environmental fit for now to see if they lead to different interpretations.
+
+### Ordinations with Environmental Variables
+
+Prepare the ordination variables from the PCA
+```{r}
+# re-run the PCA
+log_transform_pca <- prcomp(CPUE_table_transform_cen_st)
+
+# trim metadata to remove samples that are not in CPUE data table
+metadata_ordinations <- metadata[metadata$SampleID %in% rownames(log_transform_pca$x),]
+
+# and remove repetitive metadata variables like Date/ Month/ Year/ Trawl #
+metadata_ordinations <- select(metadata_ordinations, -"Year.Trawl#", -Date, -Month, -Year)
+
+# sort metadata in same order as the distance matrix, bray_dmat
+metadata_ordinations <- metadata_ordinations %>% arrange(factor(SampleID, levels = rownames(log_transform_pca$x)))
+
+# change the column name "Datecode" to "Date" (better for plotting)
+colnames(metadata_ordinations)[2] <- "Date"
+
+# fit environmental factors and save stats output
+log_transform_pca_envfit <- envfit(log_transform_pca, metadata_ordinations, permutations = 1000)
+capture.output(log_transform_pca_envfit, file = "stats_results/log_transform_pca_envfit_CPUE.txt")
+
+## The only signficant variable is Station (p = 0.003996)
+
+# # Make an ordination object out of the envfit with sig variable
+log_transform_pca_envfit_station <- envfit(log_transform_pca~Station, metadata_ordinations, permutations = 1000)
+```
+
+
+Plot in 2D. 
+Actually didn't put any vectors in this plot because the only significant variable, station, is already color-coded and there are 11 stations so vectors would be messy.
+```{r}
+# Convert characters in metadata to factors
+metadata_ordinations <- metadata_ordinations %>% mutate_if(sapply(metadata_ordinations, is.character), as.factor)
+with(as.data.frame(metadata_ordinations), levels(Station))
+
+# Define plot parameters
+colvec <- c(brewer.pal(11,'Paired')) # colors of stations
+shapevec <- c(19,18) # shapes indicating Bayside
+
+# Set up basic plot
+par(xpd = T, mar = par()$mar + c(0,0,0,8.5)) # leave space to add legend. xpd = T allows legend to be outside of the plot
+# Add the site scores
+with(metadata_ordinations, plot(scores(log_transform_pca, display = "sites"), col = colvec[Station], pch = shapevec[Bayside], cex = 2, xlab = "Co1 17.5%", ylab = "Co2 11.3%"))
+# Add the hulls indicating Bayside
+with(metadata_ordinations, ordihull(log_transform_pca, Bayside, lwd = 2, lty = c(3,5), label = FALSE))
+# Add legends
+with(metadata_ordinations, legend(1.8, 2, legend = levels(Station), col = colvec, pch = c(19,18,19,19,19,18,19,19,19,18,18), bty = "n", pt.cex = 2, cex = .8))
+legend(1.8, 5, c("EAST", "WEST"), col = c("black"), lty = c(3,5), lwd = 2, bty = "n", cex = .8) # Legend for Bayside hull lines- did this manually
+
+
+
+# Export using base R/ vegan helpers
+setEPS()
+postscript("Figures/pca_log_transform_CPUE_envfit.eps", width = 7, height = 5)
+par(xpd = T, mar = par()$mar + c(0,0,0,8.5))
+with(metadata_ordinations, plot(scores(log_transform_pca, display = "sites"), col = colvec[Station], pch = shapevec[Bayside], cex = 2, xlab = "Co1 17.5%", ylab = "Co2 11.3%"))
+with(metadata_ordinations, ordihull(log_transform_pca, Bayside, lwd = 2, lty = c(3,5), label = FALSE))
+with(metadata_ordinations, legend(1.8, 2, legend = levels(Station), col = colvec, pch = c(19,18,19,19,19,18,19,19,19,18,18), bty = "n", pt.cex = 2, cex = .8))
+legend(1.8, 5, c("EAST", "WEST"), col = c("black"), lty = c(3,5), lwd = 2, bty = "n", cex = .8)
+dev.off()
+
+```
+
+
+## CONTINUE WITH ENVFIT OF PCOA
