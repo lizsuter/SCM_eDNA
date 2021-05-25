@@ -1246,10 +1246,12 @@ CPUE_table_transform_cen_st
 ### CPUE PCA
 Generate the PCA and visualize axes
 ```{r}
+# convert to dataframe
 CPUE_table_transform_cen_st <- data.frame(CPUE_table_transform_cen_st)
 rownames(CPUE_table_transform_cen_st) <- c(CPUE_table_transform_cen_st$SampleID)
 CPUE_table_transform_cen_st <- CPUE_table_transform_cen_st[,-1]
 
+# run the PCA
 log_transform_pca <- prcomp(CPUE_table_transform_cen_st)
                             
 # Visual representation with a screeplot
@@ -1308,7 +1310,7 @@ withr::with_dir('Embedded_figures', htmlwidgets::saveWidget(as_widget(pca_log_tr
 
 <iframe src="Embedded_figures/pca_log_transform_CPUE.html" height="600px" width="100%" style="border:none;"></iframe>
 
-Also plot in 2D 
+Also plot in 2D -
 ```{r}
 log_transform_frame_2D <- ggplot(pca_logtransform_frame,aes(x = PC1, y = PC2, color = Station, shape = Bayside)) +
   geom_point(size = 4) +
@@ -1323,7 +1325,7 @@ ggsave("figures/pca_log_transform_2D.eps",log_transform_frame_2D, width = 7, hei
 ```
 
 
-Summary: The PerVar explained is OK. Try a PCoA
+Summary: The percent variance explained by PCA is OK. Try a PCoA
 
 ### CPUE PCoA Bray Curtis
 
@@ -1331,6 +1333,7 @@ Next, try a PCoA. Use the log-transformed abundance matrix to calculate a distan
 
 NOTE: Need to use a correction here for negative eigenvalues
 ```{r}
+# convert to dataframe
 CPUE_table_transform <- data.frame(CPUE_table_transform)
 rownames(CPUE_table_transform) <- c(CPUE_table$SampleID)
 CPUE_table_transform <- CPUE_table_transform[,-1]
@@ -1424,7 +1427,7 @@ Both the PCA and PCoA explain similar percent variances using the first two axes
 
 ### Ordinations with Environmental Variables
 
-Prepare the ordination variables from the PCA
+#### PCA
 ```{r}
 # re-run the PCA
 log_transform_pca <- prcomp(CPUE_table_transform_cen_st)
@@ -1435,7 +1438,7 @@ metadata_ordinations <- metadata[metadata$SampleID %in% rownames(log_transform_p
 # and remove repetitive metadata variables like Date/ Month/ Year/ Trawl #
 metadata_ordinations <- select(metadata_ordinations, -"Year.Trawl#", -Date, -Month, -Year)
 
-# sort metadata in same order as the distance matrix, bray_dmat
+# sort metadata in same order as the pca matrix
 metadata_ordinations <- metadata_ordinations %>% arrange(factor(SampleID, levels = rownames(log_transform_pca$x)))
 
 # change the column name "Datecode" to "Date" (better for plotting)
@@ -1445,9 +1448,9 @@ colnames(metadata_ordinations)[2] <- "Date"
 log_transform_pca_envfit <- envfit(log_transform_pca, metadata_ordinations, permutations = 1000)
 capture.output(log_transform_pca_envfit, file = "stats_results/log_transform_pca_envfit_CPUE.txt")
 
-## The only signficant variable is Station (p = 0.003996)
+## The only signficant variable is Station (p = 0.004995)
 
-# # Make an ordination object out of the envfit with sig variable
+# Make an ordination object out of the envfit with sig variable
 log_transform_pca_envfit_station <- envfit(log_transform_pca~Station, metadata_ordinations, permutations = 1000)
 ```
 
@@ -1488,4 +1491,75 @@ dev.off()
 ```
 
 
-## CONTINUE WITH ENVFIT OF PCOA
+
+#### PCoA
+```{r}
+# re-run the ordination
+pcoa_bray <- wcmdscale(bray_dmat, eig = TRUE, add = "cailliez")
+
+# # trim metadata to remove samples that are not in CPUE data table
+# metadata_ordinations <- metadata[metadata$SampleID %in% rownames(log_transform_pca$x),]
+# 
+# # and remove repetitive metadata variables like Date/ Month/ Year/ Trawl #
+# metadata_ordinations <- select(metadata_ordinations, -"Year.Trawl#", -Date, -Month, -Year)
+# 
+# # sort metadata in same order as the pca matrix
+# metadata_ordinations <- metadata_ordinations %>% arrange(factor(SampleID, levels = rownames(log_transform_pca$x)))
+# 
+# # change the column name "Datecode" to "Date" (better for plotting)
+# colnames(metadata_ordinations)[2] <- "Date"
+
+# fit environmental factors and save stats output
+pcoa_bray_CPUE_envfit <- envfit(pcoa_bray, metadata_ordinations, permutations = 1000)
+capture.output(log_transform_pca_envfit, file = "stats_results/pcoa_bray_envfit_CPUE.txt")
+
+## Date (p = 0.04995), Bayside (p = 0.001998), and Station (p = 0.000999) are signficant
+
+# Make an ordination object out of the envfit with sig variables
+pcoa_bray_envfit_Date <- envfit(pcoa_bray~Date, metadata_ordinations, permutations = 1000)
+pcoa_bray_envfit_Bayside <- envfit(pcoa_bray~Bayside, metadata_ordinations, permutations = 1000)
+pcoa_bray_envfit_station <- envfit(pcoa_bray~Station, metadata_ordinations, permutations = 1000)
+```
+
+
+Plot in 2D. 
+Actually didn't put any vectors in this plot because the only significant variable, station, is already color-coded and there are 11 stations so vectors would be messy.
+```{r}
+# Convert characters in metadata to factors
+metadata_ordinations <- metadata_ordinations %>% mutate_if(sapply(metadata_ordinations, is.character), as.factor)
+with(as.data.frame(metadata_ordinations), levels(Station))
+
+# Define plot parameters
+colvec <- c(brewer.pal(11,'Paired')) # colors of stations
+shapevec <- c(19,18) # shapes indicating Bayside
+
+# Set up basic plot
+par(xpd = T, mar = par()$mar + c(0,0,0,8)) # leave space to add legend. xpd = T allows legend to be outside of the plot
+# Add the site scores
+with(metadata_ordinations, plot(scores(pcoa_bray, display = "sites"), col = colvec[Station], pch = shapevec[Bayside], cex = 2, xlab = "Co1 12.0%", ylab = "Co2 10.3%"))
+# Add the date vector
+plot(pcoa_bray_envfit_Date, p.max = 0.1, lwd = 2, col = "black")
+# Add the hulls indicating Bayside
+with(metadata_ordinations, ordihull(pcoa_bray, Bayside, lwd = 2, lty = c(3,5), label = FALSE))
+# Add legends
+with(metadata_ordinations, legend(0.77, 0.3, legend = levels(Station), col = colvec, pch = c(19,18,19,19,19,18,19,19,19,18,18), bty = "n", pt.cex = 2, cex = .8))
+legend(0.77, 0.5, c("EAST", "WEST"), col = c("black"), lty = c(3,5), lwd = 2, bty = "n", cex = .8) # Legend for Bayside hull lines- did this manually
+
+
+# Export using base R/ vegan helpers
+setEPS()
+postscript("Figures/pcoa_bray_envfit_CPUE.eps", width = 7, height = 5)
+par(xpd = T, mar = par()$mar + c(0,0,0,8)) 
+with(metadata_ordinations, plot(scores(pcoa_bray, display = "sites"), col = colvec[Station], pch = shapevec[Bayside], cex = 2, xlab = "Co1 12.0%", ylab = "Co2 10.3%"))
+plot(pcoa_bray_envfit_Date, p.max = 0.1, lwd = 2, col = "black")
+with(metadata_ordinations, ordihull(pcoa_bray, Bayside, lwd = 2, lty = c(3,5), label = FALSE))
+with(metadata_ordinations, legend(0.77, 0.3, legend = levels(Station), col = colvec, pch = c(19,18,19,19,19,18,19,19,19,18,18), bty = "n", pt.cex = 2, cex = .8))
+legend(0.77, 0.5, c("EAST", "WEST"), col = c("black"), lty = c(3,5), lwd = 2, bty = "n", cex = .8) 
+dev.off()
+```
+
+
+
+## Ordination Summary
+The Bray-Curtis PCoA on the eDNA and trawl CPUE data are similar but not identical. Each ordination reveals that Bayside and Date are important correlated variables. The eDNA ordination was also sensitive to DO, which did not appear in the CPUE ordination. The first two axes of both ordinations explain some, but not a majority of the variance (32.1% for eDNA and 22.3% for CPUE). 
+
