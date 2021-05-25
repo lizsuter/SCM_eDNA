@@ -1,6 +1,6 @@
 # Shinnecock Bay eDNA study
 samples collected by SCM in summer 2020  
-bioninformatics analysis by EAS in early 2021
+bioinformatics analysis by EAS in early 2021
 
 ---  
 
@@ -16,4 +16,3 @@ Notebook `Ecol_analysis.Rmd` is ecological analysis (abundance plots, ecological
 
 ---  
 
-Last updated April 16, 2021

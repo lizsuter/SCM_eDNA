@@ -1,7 +1,7 @@
 ---
 title: "Processing Results from DADA2 to make plots, do some statistics"
 author: "Liz Suter"
-date: "May 22, 2021"
+date: "May 25, 2021"
 output: html_notebook
 editor_options: 
   chunk_output_type: inline
@@ -34,9 +34,9 @@ editor_options:
   - [Bubble plots of Counts](#bubble-plots-of-counts)
   - [Bubble plots of CPUE](#bubble-plots-of-cpue)
 - [Compare Trawl and eDNA](#compare-trawl-and-edna)
- - [Prepare the data](#prepare-the-data)
- - [Species Richness](#species-richness)
- - [Species tally across whole study](#species-tally-across-whole-study)
+  - [Prepare the data](#prepare-the-data)
+  - [Species Richness](#species-richness)
+  - [Species tally across whole study](#species-tally-across-whole-study)
 - [Exploratory Analyses](#exploratory-analyses)
   - [Ordinations on eDNA](#ordinations-on-edna)
       - [PCA](#pca)
@@ -50,6 +50,13 @@ editor_options:
   - [Ordinations on Trawl Data](#ordinations-on-trawl-data)
     - [Prepare the CPUE data](#prepare-the-cpue-data)
     - [CPUE PCA](#cpue-pca)
+    - [CPUE PCoA Bray Curtis](#cpue-pcoa-bray-curtis)
+    - [CPUE Ordinations Summary](#cpue-ordinations-summary)
+    - [Ordinations with Environmental Variables](#ordinations-with-environmental-variables)
+      - [CPUE PCA with Environmental Variables](#cpue-pca-with-environmental-variables)
+      - [CPUE PCoA with Environmental Variables](#cpue-pcoa-with-environmental-variables)
+  - [Ordination Summary](#ordination-summary)
+
       
 <br/>
 
@@ -65,7 +72,7 @@ library(Biostrings)
 #library(phangorn)
 library(readr)
 library(seqinr)
-library(decontam)
+#library(decontam)
 library(ape)
 library(vegan)
 #library(philr)
@@ -73,7 +80,7 @@ library(RColorBrewer)
 library(microbiome)
 #library(DESeq2)
 library(compositions);
-library(cowplot)
+#library(cowplot)
 library(plotly)
 library(htmlwidgets)
 library(withr)
@@ -1427,7 +1434,7 @@ Both the PCA and PCoA explain similar percent variances using the first two axes
 
 ### Ordinations with Environmental Variables
 
-#### PCA
+#### CPUE PCA with Environmental Variables
 ```{r}
 # re-run the PCA
 log_transform_pca <- prcomp(CPUE_table_transform_cen_st)
@@ -1492,7 +1499,7 @@ dev.off()
 
 
 
-#### PCoA
+#### CPUE PCoA with Environmental Variables
 ```{r}
 # re-run the ordination
 pcoa_bray <- wcmdscale(bray_dmat, eig = TRUE, add = "cailliez")
