@@ -2,10 +2,10 @@
 ***VECTORS
 
                  PC1      PC2     r2 Pr(>r)
-Date        -0.51434  0.85759 0.0876 0.1329
-DO          -0.54921 -0.83568 0.0527 0.2957
-Salinity    -0.80331 -0.59556 0.0263 0.5644
-Temperature -0.80146  0.59804 0.0031 0.9141
+Date        -0.51434  0.85759 0.0876 0.1479
+DO          -0.54921 -0.83568 0.0527 0.3147
+Salinity    -0.80331 -0.59556 0.0263 0.5405
+Temperature -0.80146  0.59804 0.0031 0.8941
 Permutation: free
 Number of permutations: 1000
 
@@ -79,9 +79,9 @@ HabitatSEAGRASS         -0.5308 -0.1579
 Goodness of fit:
              r2   Pr(>r)   
 SampleID 1.0000 1.000000   
-Bayside  0.0377 0.199800   
-Station  0.4267 0.004995 **
-Habitat  0.0571 0.267732   
+Bayside  0.0377 0.181818   
+Station  0.4267 0.005994 **
+Habitat  0.0571 0.297702   
 ---
 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 Permutation: free

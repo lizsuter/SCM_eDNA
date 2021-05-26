@@ -1,7 +1,7 @@
 ---
 title: "Processing Results from DADA2 to make plots, do some statistics"
 author: "Liz Suter"
-date: "May 25, 2021"
+date: "May 26, 2021"
 output: html_notebook
 editor_options: 
   chunk_output_type: inline
@@ -48,9 +48,13 @@ editor_options:
       - [eDNA Ordinations Summary](#edna-ordinations-summary)
       - [PCoA with Environmental Variables](#pcoa-with-environmental-variables)
   - [Ordinations on Trawl Data](#ordinations-on-trawl-data)
-    - [Prepare the CPUE data](#prepare-the-cpue-data)
+    - [Prepare the Trawl Data](#prepare-the-trawl-data)
     - [CPUE PCA](#cpue-pca)
+    - [Total Length (TL) PUE PCA](#tlpue-pca)
+    - [TLxSF (shedding factor) PUE PCA](#tlxsf-pue-pca)
     - [CPUE PCoA Bray Curtis](#cpue-pcoa-bray-curtis)
+    - [TL PUE PCoA Bray Curtis](#tlpue-pcoa-bray-curtis)
+    - [TLxSF PUE PCoA Bray Curtis](#tlxsf-pue-pcoa-bray-curtis)
     - [CPUE Ordinations Summary](#cpue-ordinations-summary)
     - [Ordinations with Environmental Variables](#ordinations-with-environmental-variables)
       - [CPUE PCA with Environmental Variables](#cpue-pca-with-environmental-variables)
@@ -1206,7 +1210,7 @@ dev.off()
 
 ## Ordinations on Trawl Data
 
-### Prepare the CPUE data
+### Prepare the trawl data
 
 Does CPUE data need to be transformed before ordinations?
 
@@ -1214,16 +1218,32 @@ Does CPUE data need to be transformed before ordinations?
 - [Gothues and Able 2020](https://onlinelibrary.wiley.com/doi/full/10.1111/rec.13163?casa_token=UeUAUp99yecAAAAA%3AXuJGz6ailZDq5BW27vlrRudui96Dcv-jGjAOV0USSAYpiFbr3oM7Y1GQgblJjO4n1VhqhdhgeC9vt8E) also log transform ( log(y+1) ) and center and standardize to units of standard deviation before PCA. They also excluded rare species (less than 3 occurences at all sites)
 - [Wegsheider et al. 2020](https://onlinelibrary.wiley.com/doi/full/10.1002/rra.3615?casa_token=-EV_HEpQ3sgAAAAA%3ALqeKBsNjFyz6t4KVrgFrelKTOj_mAjaVCLx-fo07yVdp_n_R0pKMr4u2G7Enqgu-Dd1Etl9lkc5I2KU) do no transformation, as far as I can tell, before PCoA
 - [Mehdi et al. 2021](https://www.sciencedirect.com/science/article/pii/S0048969720369618?casa_token=RiOhMzLOKkoAAAAA:uq-0S9llQLsAHA22HlIXL_6JRPgePwzvGzkF2xGzXwG-BM5pcyC9CuY9Vwa7IZG9Twb-XQWTYw#f0015) use a PCoA without transformation but with a Bray-Curtis dissimilarity matrix
-- Sara recommends at least a log-transformation to normalize for zeroes and high abundance/ schooling fish
+
+Conclusion?  
+
+- Center and standardize the log transformation of the counts for PCA
+- Use log-transformation of counts as input to Bray Curtis dissimilarity calculation before PCoA
 
 
-Make a table of CPUE in the style of OTU tables (samples in rows/ species in columms), of the CPUE data. Trawl_counts has already been filtered so that it only includes those samples and species that are relevant to the eDNA study
+Make a table of CPUE, TLPUE, and TLxSF.PUE in the style of OTU tables (samples in rows/ species in columms), of the CPUE data. Trawl_counts has already been filtered so that it only includes those samples and species that are relevant to the eDNA study
 ```{r}
 CPUE_table <- trawl_counts %>%
   as_data_frame()%>%
   select(SampleID, CommonName, CPUE) %>%
   pivot_wider(names_from = CommonName, values_from = CPUE) 
 CPUE_table
+
+TLPUE_table <- trawl_counts %>%
+  as_data_frame()%>%
+  select(SampleID, CommonName, TLPUE) %>%
+  pivot_wider(names_from = CommonName, values_from = TLPUE) 
+TLPUE_table
+
+TLSF.PUE_table <- trawl_counts %>%
+  as_data_frame()%>%
+  select(SampleID, CommonName, TLxSF.PUE) %>%
+  pivot_wider(names_from = CommonName, values_from = TLxSF.PUE) 
+TLSF.PUE_table
 ```
 
 
@@ -1231,12 +1251,22 @@ Transformation by log transformation (log(x+1) in order to account for zeroes)
 ```{r}
 # set NAs to zeroes
 CPUE_table[is.na(CPUE_table)] <- 0
+TLPUE_table[is.na(TLPUE_table)] <- 0
+TLSF.PUE_table[is.na(TLSF.PUE_table)] <- 0
 
 # log transform
 CPUE_table_transform <- CPUE_table
 CPUE_table_transform[,2:length(CPUE_table)] <- log10(CPUE_table[,2:length(CPUE_table)]+1)
 
+TLPUE_table_transform <- TLPUE_table
+TLPUE_table_transform[,2:length(TLPUE_table)] <- log10(TLPUE_table[,2:length(TLPUE_table)]+1)
+
+TLSF.PUE_table_transform <- TLSF.PUE_table
+TLSF.PUE_table_transform[,2:length(TLSF.PUE_table)] <- log10(TLSF.PUE_table[,2:length(TLSF.PUE_table)]+1)
+
 CPUE_table_transform
+TLPUE_table_transform
+TLSF.PUE_table_transform
 ```
 
 
@@ -1246,7 +1276,16 @@ Center (around mean) and standardize (by SD) the log-transformed CPUE data, simi
 CPUE_table_transform_cen_st <- CPUE_table_transform
 CPUE_table_transform_cen_st[,2:length(CPUE_table_transform)] <- scale(CPUE_table_transform[,2:length(CPUE_table_transform)])
 
+TLPUE_table_transform_cen_st <- TLPUE_table_transform
+TLPUE_table_transform_cen_st[,2:length(TLPUE_table_transform)] <- scale(TLPUE_table_transform[,2:length(TLPUE_table_transform)])
+
+TLSF.PUE_table_transform_cen_st <- TLSF.PUE_table_transform
+TLSF.PUE_table_transform_cen_st[,2:length(TLSF.PUE_table_transform)] <- scale(TLSF.PUE_table_transform[,2:length(TLSF.PUE_table_transform)])
+
+
 CPUE_table_transform_cen_st
+TLPUE_table_transform_cen_st
+TLSF.PUE_table_transform_cen_st
 ```
 
 
@@ -1333,6 +1372,129 @@ ggsave("figures/pca_log_transform_2D.eps",log_transform_frame_2D, width = 7, hei
 
 
 Summary: The percent variance explained by PCA is OK. Try a PCoA
+
+
+### TLPUE PCA
+Generate the PCA and visualize axes
+```{r}
+# convert to dataframe
+TLPUE_table_transform_cen_st <- data.frame(TLPUE_table_transform_cen_st)
+rownames(TLPUE_table_transform_cen_st) <- c(TLPUE_table_transform_cen_st$SampleID)
+TLPUE_table_transform_cen_st <- TLPUE_table_transform_cen_st[,-1]
+
+# run the PCA
+log_transform_pca <- prcomp(TLPUE_table_transform_cen_st)
+                            
+# Visual representation with a screeplot
+log_transform_variances <- as.data.frame(log_transform_pca$sdev^2/sum(log_transform_pca$sdev^2)) %>% #Extract axes
+  # Format to plot
+  select(PercVar = 'log_transform_pca$sdev^2/sum(log_transform_pca$sdev^2)') %>% 
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+head(log_transform_variances)
+
+# Plot screeplot
+ggplot(log_transform_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Log-Transformed PCA Screeplot, TLPUE")
+```
+
+Total variance explained by first 2 axes = 17.4 + 10.8 = **28.8%**. Total variance explained by first three axes= 17.4 + 10.8 + 9.6 = **37.8%**. Very similar to the PCA on CPUE
+
+
+
+Plot in 2D -
+```{r}
+# Extract variances from the pca
+pca_logtransform_frame <- data.frame(log_transform_pca$x) %>% 
+  rownames_to_column(var = "SampleID")
+
+# Merge metadata into the pcoa data table
+pca_logtransform_frame <- left_join(pca_logtransform_frame, metadata, by = "SampleID")
+head(pca_logtransform_frame)
+
+# Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
+eigenvalues<-round(log_transform_variances[,2], digits = 4)*100
+
+log_transform_frame_2D <- ggplot(pca_logtransform_frame,aes(x = PC1, y = PC2, color = Station, shape = Bayside)) +
+  geom_point(size = 4) +
+  scale_color_brewer(palette="Paired") +
+  theme_bw() +
+  labs(x = paste0('PC1 ', eigenvalues[1], '%'), y = paste0('PC2 ', eigenvalues[2], '%'), title = "PCA on Log-transformed Total Length PUE") +
+  coord_fixed(ratio = 1)
+
+log_transform_frame_2D
+```
+
+
+Summary: This is VERY similar to the distribution of points from the PCA on CPUE. Check the allometric data (total length) times the shedding factor (SF) just to be comprehensive...
+
+
+
+
+### TLxSF PUE PCA
+Generate the PCA and visualize axes
+```{r}
+# convert to dataframe
+TLSF.PUE_table_transform_cen_st <- data.frame(TLSF.PUE_table_transform_cen_st)
+rownames(TLSF.PUE_table_transform_cen_st) <- c(TLSF.PUE_table_transform_cen_st$SampleID)
+TLSF.PUE_table_transform_cen_st <- TLSF.PUE_table_transform_cen_st[,-1]
+
+# run the PCA
+log_transform_pca <- prcomp(TLSF.PUE_table_transform_cen_st)
+                            
+# Visual representation with a screeplot
+log_transform_variances <- as.data.frame(log_transform_pca$sdev^2/sum(log_transform_pca$sdev^2)) %>% #Extract axes
+  # Format to plot
+  select(PercVar = 'log_transform_pca$sdev^2/sum(log_transform_pca$sdev^2)') %>% 
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+head(log_transform_variances)
+
+# Plot screeplot
+ggplot(log_transform_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Log-Transformed PCA Screeplot, TLPUE")
+```
+
+Total variance explained by first 2 axes = 17.5 + 10.7 = **28.2%**. Total variance explained by first three axes= 17.4 + 10.8 + 9.7 = **37.9%**. Very similar to the PCA on CPUE and on TLPUE
+
+
+
+Plot in 2D -
+```{r}
+# Extract variances from the pca
+pca_logtransform_frame <- data.frame(log_transform_pca$x) %>% 
+  rownames_to_column(var = "SampleID")
+
+# Merge metadata into the pcoa data table
+pca_logtransform_frame <- left_join(pca_logtransform_frame, metadata, by = "SampleID")
+head(pca_logtransform_frame)
+
+# Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
+eigenvalues<-round(log_transform_variances[,2], digits = 4)*100
+
+log_transform_frame_2D <- ggplot(pca_logtransform_frame,aes(x = PC1, y = PC2, color = Station, shape = Bayside)) +
+  geom_point(size = 4) +
+  scale_color_brewer(palette="Paired") +
+  theme_bw() +
+  labs(x = paste0('PC1 ', eigenvalues[1], '%'), y = paste0('PC2 ', eigenvalues[2], '%'), title = "PCA on Log-transformed Total Length x Shedding Factor PUE") +
+  coord_fixed(ratio = 1)
+
+log_transform_frame_2D
+```
+
+Again, this is very similar to the PCA on CPUE and on TLPU. Stick with CPUE for simplicity.
+
+
 
 ### CPUE PCoA Bray Curtis
 
@@ -1429,6 +1591,164 @@ pcoa_bray_2D
 ggsave("figures/pcoa_bray_CPUE_2D.eps",pcoa_bray_2D, width = 7, height = 5, units = c("in"))
 ```
 
+
+
+### TLPUE PCoA Bray Curtis
+
+
+```{r}
+# convert to dataframe
+TLPUE_table_transform <- data.frame(TLPUE_table_transform)
+rownames(TLPUE_table_transform) <- c(TLPUE_table$SampleID)
+TLPUE_table_transform <- TLPUE_table_transform[,-1]
+
+# Get Bray Curtis distance matrix from log-transformed CPUE data
+bray_dmat<-vegdist(TLPUE_table_transform,method="bray") 
+
+# the normal PCoA results in negative eigenvalues, so need correction. use wcmdscale and add cailliez correction
+pcoa_bray <- wcmdscale(bray_dmat, eig = TRUE, add = "cailliez")
+
+# check out summary of PCoA
+eigenvals(pcoa_bray) %>%
+  summary() -> ev
+
+# extract variances and put in tibble
+bray_variances <- NULL
+for (i in 1:length(eigenvals(pcoa_bray))){
+  bray_variances[i] <- eigenvals(pcoa_bray)[i]/sum(eigenvals(pcoa_bray))
+}
+
+# Extract variances from pcoa, from calculated dist. metric
+bray_variances <- tibble(round(bray_variances,3)) %>%
+  select(PercVar = 'round(bray_variances, 3)') %>%
+  rownames_to_column(var = "PCaxis") %>%
+  data.frame
+head(bray_variances)
+
+# Make a screeplot
+ggplot(bray_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Bray-Curtis PCoA Screeplot")
+```
+The first two axes (14.7+10.3+9.1) are not as good as PCA. Total variance explained by first 3 PCs = **34.1%**)
+
+
+
+
+Plot in 2D
+```{r}
+# Extract variances from the pcoa
+pcoa_bray_df <- data.frame(pcoa_bray$points) %>% 
+  rownames_to_column(var = "SampleID")
+
+# Merge metadata into the pcoa data table
+pcoa_bray_df <- left_join(pcoa_bray_df, metadata, by = "SampleID")
+head(pcoa_bray_df)
+
+# Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
+eigenvalues<-round(bray_variances[,2], digits = 4)*100
+
+pcoa_bray_2D <- ggplot(pcoa_bray_df,aes(x = Dim1, y = Dim2, color = Station, shape = Bayside)) +
+  geom_point(size = 4) +
+  scale_color_brewer(palette="Paired") +
+  theme_bw() +
+  labs(x = paste0('Co 1 ', eigenvalues[1], '%'), y = paste0('Co 2 ', eigenvalues[2], '%'), title = "PCoA on Log-transformed Total Length PUE, with Bray-Curtis Dissimilarity") +
+  coord_fixed(ratio = 1)
+
+pcoa_bray_2D
+```
+
+The above is very similar to the Bray Curtis/ PCoA on CPUE (with Axis 2 flipped). 
+
+
+
+
+
+
+### TLxSF PUE PCoA Bray Curtis
+
+
+```{r}
+# convert to dataframe
+TLSF.PUE_table_transform <- data.frame(TLSF.PUE_table_transform)
+rownames(TLSF.PUE_table_transform) <- c(TLSF.PUE_table$SampleID)
+TLSF.PUE_table_transform <- TLSF.PUE_table_transform[,-1]
+
+# Get Bray Curtis distance matrix from log-transformed CPUE data
+bray_dmat<-vegdist(TLSF.PUE_table_transform,method="bray") 
+
+# the normal PCoA results in negative eigenvalues, so need correction. use wcmdscale and add cailliez correction
+pcoa_bray <- wcmdscale(bray_dmat, eig = TRUE, add = "cailliez")
+
+# check out summary of PCoA
+eigenvals(pcoa_bray) %>%
+  summary() -> ev
+
+# extract variances and put in tibble
+bray_variances <- NULL
+for (i in 1:length(eigenvals(pcoa_bray))){
+  bray_variances[i] <- eigenvals(pcoa_bray)[i]/sum(eigenvals(pcoa_bray))
+}
+
+# Extract variances from pcoa, from calculated dist. metric
+bray_variances <- tibble(round(bray_variances,3)) %>%
+  select(PercVar = 'round(bray_variances, 3)') %>%
+  rownames_to_column(var = "PCaxis") %>%
+  data.frame
+head(bray_variances)
+
+# Make a screeplot
+ggplot(bray_variances, aes(x = as.numeric(PCaxis), y = PercVar)) + 
+  geom_bar(stat = "identity", fill = "grey", color = "black") +
+  theme_minimal() +
+  theme(axis.title = element_text(color = "black", face = "bold", size = 10),
+        axis.text.y = element_text(color = "black", face = "bold"),
+        axis.text.x = element_blank()) +
+  labs(x = "PC axis", y = "% Variance", title = "Bray-Curtis PCoA Screeplot")
+```
+The first two axes (15.9+10.9+9.5) are not as good as PCA. Total variance explained by first 3 PCs = **36.3%**)
+
+
+
+
+Plot in 2D
+```{r}
+# Extract variances from the pcoa
+pcoa_bray_df <- data.frame(pcoa_bray$points) %>% 
+  rownames_to_column(var = "SampleID")
+
+# Merge metadata into the pcoa data table
+pcoa_bray_df <- left_join(pcoa_bray_df, metadata, by = "SampleID")
+head(pcoa_bray_df)
+
+# Select eigenvalues from dataframe, round to 4 places and multiply by 100 for plotting. These will be the axes for the 3-D plot
+eigenvalues<-round(bray_variances[,2], digits = 4)*100
+
+pcoa_bray_2D <- ggplot(pcoa_bray_df,aes(x = Dim1, y = Dim2, color = Station, shape = Bayside)) +
+  geom_point(size = 4) +
+  scale_color_brewer(palette="Paired") +
+  theme_bw() +
+  labs(x = paste0('Co 1 ', eigenvalues[1], '%'), y = paste0('Co 2 ', eigenvalues[2], '%'), title = "PCoA on Log-transformed Total Length x Shedding Factor PUE, with Bray-Curtis Dissimilarity") +
+  coord_fixed(ratio = 1)
+
+pcoa_bray_2D
+```
+
+The above is very similar to the Bray Curtis/ PCoA on CPUE (with Axis 2 flipped) and on TPUE. Just continue with CPUE PCoA for simplicity.
+
+
+
+
+
+
+
+
+
+
 ### CPUE Ordinations Summary
 Both the PCA and PCoA explain similar percent variances using the first two axes (28.8% for PCA and 22.3%) for PCoA. Continue with both for the environmental fit for now to see if they lead to different interpretations.
 
@@ -1502,25 +1822,31 @@ dev.off()
 #### CPUE PCoA with Environmental Variables
 ```{r}
 # re-run the ordination
+CPUE_table_transform <- CPUE_table
+CPUE_table_transform[,2:length(CPUE_table)] <- log10(CPUE_table[,2:length(CPUE_table)]+1)
+CPUE_table_transform <- data.frame(CPUE_table_transform)
+rownames(CPUE_table_transform) <- c(CPUE_table$SampleID)
+CPUE_table_transform <- CPUE_table_transform[,-1]
+bray_dmat<-vegdist(CPUE_table_transform,method="bray") 
 pcoa_bray <- wcmdscale(bray_dmat, eig = TRUE, add = "cailliez")
 
-# # trim metadata to remove samples that are not in CPUE data table
-# metadata_ordinations <- metadata[metadata$SampleID %in% rownames(log_transform_pca$x),]
-# 
-# # and remove repetitive metadata variables like Date/ Month/ Year/ Trawl #
-# metadata_ordinations <- select(metadata_ordinations, -"Year.Trawl#", -Date, -Month, -Year)
-# 
-# # sort metadata in same order as the pca matrix
-# metadata_ordinations <- metadata_ordinations %>% arrange(factor(SampleID, levels = rownames(log_transform_pca$x)))
-# 
-# # change the column name "Datecode" to "Date" (better for plotting)
-# colnames(metadata_ordinations)[2] <- "Date"
+# trim metadata to remove samples that are not in CPUE data table
+metadata_ordinations <- metadata[metadata$SampleID %in% rownames(CPUE_table_transform),]
+
+# and remove repetitive metadata variables like Date/ Month/ Year/ Trawl #
+metadata_ordinations <- select(metadata_ordinations, -"Year.Trawl#", -Date, -Month, -Year)
+
+# sort metadata in same order as the pca matrix
+metadata_ordinations <- metadata_ordinations %>% arrange(factor(SampleID, levels = rownames(log_transform_pca$x)))
+
+# change the column name "Datecode" to "Date" (better for plotting)
+colnames(metadata_ordinations)[2] <- "Date"
 
 # fit environmental factors and save stats output
 pcoa_bray_CPUE_envfit <- envfit(pcoa_bray, metadata_ordinations, permutations = 1000)
-capture.output(log_transform_pca_envfit, file = "stats_results/pcoa_bray_envfit_CPUE.txt")
+capture.output(pcoa_bray_CPUE_envfit, file = "stats_results/pcoa_bray_envfit_CPUE.txt")
 
-## Date (p = 0.04995), Bayside (p = 0.001998), and Station (p = 0.000999) are signficant
+## Bayside (p = 0.004995), and Station (p = 0.003996) are signficant. Date (p = 0.06593) is slightly above 0.05 threshold
 
 # Make an ordination object out of the envfit with sig variables
 pcoa_bray_envfit_Date <- envfit(pcoa_bray~Date, metadata_ordinations, permutations = 1000)
@@ -1568,5 +1894,9 @@ dev.off()
 
 
 ## Ordination Summary
+For the trawl data, ordinations of the allometric corrections (sum of total length and sum total length x shedding factor) are VERY similar to the results using just CPUE. So, for simplicity, just present the CPUE.  
+
 The Bray-Curtis PCoA on the eDNA and trawl CPUE data are similar but not identical. Each ordination reveals that Bayside and Date are important correlated variables. The eDNA ordination was also sensitive to DO, which did not appear in the CPUE ordination. The first two axes of both ordinations explain some, but not a majority of the variance (32.1% for eDNA and 22.3% for CPUE). 
+
+
 
