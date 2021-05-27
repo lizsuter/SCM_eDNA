@@ -12,7 +12,7 @@ Notebook `DADA2_pipeline_SCM_eDNA.Rmd` is cleaning up, clustering, and identifyi
 
 Notebook `Ecol_analysis.Rmd` is ecological analysis (abundance plots, ecological statistics, etc.).
 
-[Link](https://lizsuter.github.io/files/Ecol_analysis.nb.html) to the hosted RMarkdown notebook for this analysis.    
+[Link](https://lizsuter.github.io/files/Ecol_Analysis.nb.html) to the hosted RMarkdown notebook for this analysis.    
 
 ---  
 
