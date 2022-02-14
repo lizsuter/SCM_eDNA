@@ -22,6 +22,12 @@ library(taxonomizr)
 ```
 
 
+List R and package versions
+```{r}
+sessionInfo()
+```
+
+
 ### Get sample names
 (Run in bash Terminal)  
 ```{bash}
